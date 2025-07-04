@@ -1,0 +1,9 @@
+kotlin {
+    // بدلاً من
+    // jvmToolchain(8)
+    
+    // استخدم هذا
+    jvmToolchain {
+        languageVersion.set(JavaLanguageVersion.of(11))
+    }
+}

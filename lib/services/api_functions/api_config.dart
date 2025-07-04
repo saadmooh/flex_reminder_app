@@ -1,6 +1,9 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/material.dart';
+import '../../globals.dart';
 
 class ApiConfig {
   static const String API_BASE_URL = 'https://flexreminder.com/api';
@@ -17,18 +20,43 @@ class ApiConfig {
     final token = await getToken();
     if (token == null) return false;
 
-    final response = await http.get(
-      Uri.parse('$API_BASE_URL/verify-token'),
-      headers: {
-        'X-API-Password': API_PASSWORD,
-        'Authorization': 'Bearer $token',
-        'Accept': 'application/json',
-      },
-    );
+    if (await _checkInternetConnectivity() == false) {
+      return false;
+    }
 
-    final data = jsonDecode(response.body);
-    print('checkTokenValidity:$data');
-    return response.statusCode == 200 && data['valid'] == true;
+    try {
+      final response = await http.get(
+        Uri.parse('$API_BASE_URL/verify-token'),
+        headers: {
+          'X-API-Password': API_PASSWORD,
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+      print('checkTokenValidity:$data');
+      return response.statusCode == 200 && data['valid'] == true;
+    } catch (e) {
+      print('Error checking token validity: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _checkInternetConnectivity() async {
+    var connectivityResult = await (Connectivity().checkConnectivity());
+    if (connectivityResult == ConnectivityResult.none) {
+      // Optionally, show a user-friendly message
+      // For example, using a SnackBar or a dialog
+      ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
+        SnackBar(
+          content: Text('No internet connection'),
+        ),
+      );
+      debugPrint('No internet connection');
+      return false;
+    }
+    return true;
   }
 
   Future<int?> getCurrentUserId() async {

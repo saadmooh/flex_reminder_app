@@ -19,6 +19,7 @@ dependencies:
   # HTTP & Network
   http: ^1.2.2
   cached_network_image: ^3.3.1
+  connectivity_plus: ^6.0.3
   
   # Sharing & URL
   share_plus: ^10.0.2

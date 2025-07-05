@@ -1,1 +1,29 @@
-{"installed":{"client_id":"332398646149-a2ifdnfi390pd2a3ecs18cse9gv1qafg.apps.googleusercontent.com","project_id":"stellar-sunrise-452311-v5","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs"}}
+{
+  "project_info": {
+    "project_number": "587023219031",
+    "project_id": "flex-reminder",
+    "storage_bucket": "flex-reminder.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:587023219031:android:fcda1454e2cd5c2970e612",
+        "android_client_info": {
+          "package_name": "com.example.reminder"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAy_CqIRNOa2u-KTJ5v4KrwDQgp27JaGuA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

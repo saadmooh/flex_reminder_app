@@ -1,3 +1,4 @@
+import 'package:flex_reminder/services/fcm_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -103,6 +104,7 @@ class AuthProvider with ChangeNotifier {
         _userId = response['data']['user_id'];
         await setToken(token);
         _isAuthenticated = true;
+        await FcmService().sendFcmTokenToBackend();
       } else {
         _errorMessage = response['data']['message'] ??
             response['data']['errors']?.join('\n') ??

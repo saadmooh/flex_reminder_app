@@ -50,6 +50,10 @@ dependencies:
   # Icons
   flutter_launcher_icons: ^0.13.1
 
+  # Firebase
+  firebase_core: ^3.2.0
+  firebase_messaging: ^15.0.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

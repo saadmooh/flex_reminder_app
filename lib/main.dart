@@ -15,13 +15,20 @@ import 'package:flex_reminder/l10n/app_localizations.dart';
 import 'package:flex_reminder/pages/reset_password_screen.dart';
 import 'package:flex_reminder/pages/subscription_management_screen.dart';
 import 'package:flex_reminder/pages/email_verification_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flex_reminder/firebase_options.dart';
 import 'package:flex_reminder/providers/auth_provider.dart';
 import 'package:flex_reminder/providers/reminders_notifier.dart';
 import 'package:flex_reminder/services/notification_service.dart';
+import 'package:flex_reminder/services/fcm_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   await NotificationService().init();
+  await FcmService().init();
   runApp(
     MultiProvider(
       providers: [

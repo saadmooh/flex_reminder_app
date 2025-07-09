@@ -6,14 +6,14 @@
     [
       "/home/user/.androidsdkroot/cmake/3.22.1/bin/ninja",
       "-C",
-      "/home/user/r-f-temp-/android/app/.cxx/RelWithDebInfo/5vt6t1g6/x86_64",
+      "/home/user/flex_reminder_app/android/app/.cxx/RelWithDebInfo/5vt6t1g6/x86_64",
       "clean"
     ]
   ],
   "buildTargetsCommandComponents": [
     "/home/user/.androidsdkroot/cmake/3.22.1/bin/ninja",
     "-C",
-    "/home/user/r-f-temp-/android/app/.cxx/RelWithDebInfo/5vt6t1g6/x86_64",
+    "/home/user/flex_reminder_app/android/app/.cxx/RelWithDebInfo/5vt6t1g6/x86_64",
     "{LIST_OF_TARGETS_TO_BUILD}"
   ],
   "libraries": {},

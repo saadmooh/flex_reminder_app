@@ -1,2 +1,2 @@
-/home/user/r-f-temp-/android/app/.cxx/RelWithDebInfo/5vt6t1g6/armeabi-v7a/CMakeFiles/edit_cache.dir
-/home/user/r-f-temp-/android/app/.cxx/RelWithDebInfo/5vt6t1g6/armeabi-v7a/CMakeFiles/rebuild_cache.dir
+/home/user/flex_reminder_app/android/app/.cxx/RelWithDebInfo/5vt6t1g6/armeabi-v7a/CMakeFiles/edit_cache.dir
+/home/user/flex_reminder_app/android/app/.cxx/RelWithDebInfo/5vt6t1g6/armeabi-v7a/CMakeFiles/rebuild_cache.dir

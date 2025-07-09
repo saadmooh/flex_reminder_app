@@ -1,1 +1,1 @@
-/home/user/r-f-temp-/android/app/build/intermediates/cxx/RelWithDebInfo/5vt6t1g6/obj/x86
+/home/user/flex_reminder_app/android/app/build/intermediates/cxx/RelWithDebInfo/5vt6t1g6/obj/x86

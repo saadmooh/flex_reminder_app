@@ -47,28 +47,28 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyA1KjjFJmc9BO42giswiMzjBPq5h8MQr9c',
-    appId: '1:587023219031:web:d724d76f94f5fe8770e612',
-    messagingSenderId: '587023219031',
-    projectId: 'flex-reminder',
-    authDomain: 'flex-reminder.firebaseapp.com',
-    storageBucket: 'flex-reminder.firebasestorage.app',
+    apiKey: 'AIzaSyBvppJIurtbX99wZpLd5uYdjoqCIY05z6Q',
+    appId: '1:1038373651011:web:43426d3da28031c94acaf6',
+    messagingSenderId: '1038373651011',
+    projectId: 'flex-reminders-app',
+    authDomain: 'flex-reminders-app.firebaseapp.com',
+    storageBucket: 'flex-reminders-app.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyAy_CqIRNOa2u-KTJ5v4KrwDQgp27JaGuA',
-    appId: '1:587023219031:android:fcda1454e2cd5c2970e612',
-    messagingSenderId: '587023219031',
-    projectId: 'flex-reminder',
-    storageBucket: 'flex-reminder.firebasestorage.app',
+    apiKey: 'AIzaSyCDiatYxR5UxZGt9gtttgTFrpu7l9xUIXU',
+    appId: '1:1038373651011:android:a9b748f04d03e0f84acaf6',
+    messagingSenderId: '1038373651011',
+    projectId: 'flex-reminders-app',
+    storageBucket: 'flex-reminders-app.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyBh4IBY3f58EMdaFi-KwYhdXPv9bGq9ptQ',
-    appId: '1:587023219031:ios:d046339621af495d70e612',
-    messagingSenderId: '587023219031',
-    projectId: 'flex-reminder',
-    storageBucket: 'flex-reminder.firebasestorage.app',
+    apiKey: 'AIzaSyD4rg2ndUz8nj7EVOzeUySktB5P1ulKOPc',
+    appId: '1:1038373651011:ios:0a2feb7d58afe8da4acaf6',
+    messagingSenderId: '1038373651011',
+    projectId: 'flex-reminders-app',
+    storageBucket: 'flex-reminders-app.firebasestorage.app',
     iosBundleId: 'com.example.riverpodCounter',
   );
 

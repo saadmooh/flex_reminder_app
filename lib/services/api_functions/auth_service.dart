@@ -56,51 +56,65 @@ class AuthService {
   }
 
   Future<Map<String, dynamic>> login(String email, String password,
-      {String language = 'en'}) async {
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/login');
-    final response = await http.post(
-      url,
-      headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: {
-        'email': email,
-        'password': password,
-        'device_name': 'mobile_app',
-      },
-    );
+    {String language = 'en'}) async {
+  final url = Uri.parse('${ApiConfig.API_BASE_URL}/login');
+  final response = await http.post(
+    url,
+    headers: {
+      'X-API-Password': ApiConfig.API_PASSWORD,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: {
+      'email': email,
+      'password': password,
+      'device_name': 'mobile_app',
+    },
+  );
 
-    final responseData = json.decode(response.body);
-    print('Login Response: $responseData');
+  final responseData = json.decode(response.body);
+  print('Login Response: $responseData');
 
-    if (response.statusCode == 200) {
-      return {
-        'statusCode': response.statusCode,
-        'data': responseData,
-      };
-    } else {
-      return {
-        'statusCode': response.statusCode,
-        'data': responseData,
-      };
+  if (response.statusCode == 200) {
+    // حفظ الـ access_token في التخزين الآمن
+    if (responseData['access_token'] != null) {
+      await _storage.write(key: 'auth_token', value: responseData['access_token']);
+      print('Auth token saved successfully');
     }
-  }
 
-  Future<void> logout() async {
-    try {
-      print('Starting logout process...');
-      await _storage.delete(key: 'auth_token');
-      await _storage.delete(key: 'last_check_result');
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('user_id');
-      print('Successfully cleared auth_token, last_check_result, and user_id');
-    } catch (e) {
-      print('Error during logout: $e');
-      await _storage.deleteAll();
-      print('Cleared all storage as fallback');
+    // حفظ الـ user_id في التخزين الآمن
+    if (responseData['user'] != null && responseData['user']['id'] != null) {
+      await _storage.write(key: 'user_id', value: responseData['user']['id'].toString());
+      print('User ID saved successfully');
     }
+
+    return {
+      'statusCode': response.statusCode,
+      'data': responseData,
+    };
+  } else {
+    return {
+      'statusCode': response.statusCode,
+      'data': responseData,
+    };
   }
+}
+
+Future<void> logout() async {
+  try {
+    print('Starting logout process...');
+    await _storage.delete(key: 'auth_token');
+    await _storage.delete(key: 'user_id');
+    await _storage.delete(key: 'last_check_result');
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('user_id');
+    print('Successfully cleared auth_token, user_id, last_check_result, and user_id from SharedPreferences');
+  } catch (e) {
+    print('Error during logout: $e');
+    await _storage.deleteAll();
+    print('Cleared all storage as fallback');
+  }
+}
+  
 
   Future<void> verifyEmail(String email, String code) async {
     if (!await _apiConfig.checkTokenValidity()) {

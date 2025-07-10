@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "13520550825",
-    "project_id": "fcm-reminder-2ab40",
-    "storage_bucket": "fcm-reminder-2ab40.firebasestorage.app"
+    "project_number": "1038373651011",
+    "project_id": "flex-reminders-app",
+    "storage_bucket": "flex-reminders-app.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:13520550825:android:75b1b6ca23c7a386c1e2b8",
+        "mobilesdk_app_id": "1:1038373651011:android:a9b748f04d03e0f84acaf6",
         "android_client_info": {
           "package_name": "com.example.reminder"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDoIlWVVahNwU9QsCWWBVQ6TZW8GUZECi4"
+          "current_key": "AIzaSyCDiatYxR5UxZGt9gtttgTFrpu7l9xUIXU"
         }
       ],
       "services": {

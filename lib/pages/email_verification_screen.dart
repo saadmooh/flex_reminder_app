@@ -7,10 +7,10 @@ class EmailVerificationScreen extends StatefulWidget {
   final bool fromLogin;
 
   const EmailVerificationScreen({
-    Key? key,
+    super.key,
     required this.email,
     this.fromLogin = false,
-  }) : super(key: key);
+  });
 
   @override
   _EmailVerificationScreenState createState() =>
@@ -62,12 +62,12 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.grey[800],
         title: Text(AppLocalizations.of(context)!.anErrorOccurred,
-            style: TextStyle(color: Colors.white)),
+            style: const TextStyle(color: Colors.white)),
         content: Text(message, style: const TextStyle(color: Colors.white70)),
         actions: <Widget>[
           TextButton(
             child: Text(AppLocalizations.of(context)!.okay,
-                style: TextStyle(color: Colors.white)),
+                style: const TextStyle(color: Colors.white)),
             onPressed: () => Navigator.of(ctx).pop(),
           )
         ],
@@ -81,12 +81,12 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.grey[800],
         title: Text(AppLocalizations.of(context)!.success,
-            style: TextStyle(color: Colors.white)),
+            style: const TextStyle(color: Colors.white)),
         content: Text(message, style: const TextStyle(color: Colors.white70)),
         actions: <Widget>[
           TextButton(
             child: Text(AppLocalizations.of(context)!.okay,
-                style: TextStyle(color: Colors.white)),
+                style: const TextStyle(color: Colors.white)),
             onPressed: () => Navigator.of(ctx).pop(),
           )
         ],
@@ -106,7 +106,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
             children: <Widget>[
               Text(
                 AppLocalizations.of(context)!.verifyYourEmail,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 32.0,
                   fontWeight: FontWeight.bold,
                   color: Colors.black, // Black text
@@ -142,7 +142,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                 onPressed: _isLoading ? null : _resendVerificationCode,
                 child: Text(
                   AppLocalizations.of(context)!.resendCode,
-                  style: TextStyle(color: Colors.black), // Black text
+                  style: const TextStyle(color: Colors.black), // Black text
                 ),
               ),
               const SizedBox(height: 16.0),
@@ -160,7 +160,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                     ? const CircularProgressIndicator(color: Colors.white)
                     : Text(
                         AppLocalizations.of(context)!.verify,
-                        style: TextStyle(fontSize: 18.0, color: Colors.white),
+                        style: const TextStyle(fontSize: 18.0, color: Colors.white),
                       ),
               ),
             ],

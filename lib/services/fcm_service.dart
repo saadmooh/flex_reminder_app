@@ -264,7 +264,7 @@ class FcmService {
     try {
       String? token = await _storage.read(key: 'auth_token');
       String? fcmToken = await _storage.read(key: 'fcmToken');
-      String? user_id = await _storage.read(key: 'user_id');
+      String? userId = await _storage.read(key: 'user_id');
 
       if (token == null) {
         const message = 'توكن المصادقة غير موجود. يرجى تسجيل الدخول مرة أخرى';
@@ -284,7 +284,7 @@ class FcmService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({'token': fcmToken,'topic': 'user_$user_id','user_id':user_id,'platform':'mobile_app'}),
+        body: jsonEncode({'token': fcmToken,'topic': 'user_$userId','user_id':userId,'platform':'mobile_app'}),
       );
 
       if (response.statusCode == 200) {

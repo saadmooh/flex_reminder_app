@@ -16,7 +16,7 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
   final List<Widget>? actions;
 
   const UpperAppBar({
-    Key? key,
+    super.key,
     this.title,
     this.showSearch = false,
     this.onSearchChanged,
@@ -24,7 +24,7 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.showSettings = true,
     this.showLeading = true,
     this.actions,
-  }) : super(key: key);
+  });
 
   @override
   Size get preferredSize => const Size.fromHeight(100);
@@ -184,11 +184,11 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
                       isArabic ? TextDirection.rtl : TextDirection.ltr,
                 ),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'zh',
                 child: Text(
                   '中文',
-                  style: const TextStyle(color: Colors.black),
+                  style: TextStyle(color: Colors.black),
                   textDirection: TextDirection.ltr,
                 ),
               ),

@@ -42,7 +42,7 @@ void main() async {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -124,10 +124,10 @@ class MyApp extends StatelessWidget {
               case '/':
                 return MaterialPageRoute(builder: (_) => const SplashScreen());
               case '/auth':
-                return MaterialPageRoute(builder: (_) => AuthScreen());
+                return MaterialPageRoute(builder: (_) => const AuthScreen());
               case '/reminders':
               case '/home':
-                return MaterialPageRoute(builder: (_) => RemindersScreen());
+                return MaterialPageRoute(builder: (_) => const RemindersScreen());
               case '/reminder':
                 final args = settings.arguments as Map<String, dynamic>?;
                 final reminderId = args?['reminderId'] as int?;

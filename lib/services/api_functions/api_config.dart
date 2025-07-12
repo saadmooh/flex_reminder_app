@@ -49,7 +49,7 @@ class ApiConfig {
       // Optionally, show a user-friendly message
       // For example, using a SnackBar or a dialog
       ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text('No internet connection'),
         ),
       );

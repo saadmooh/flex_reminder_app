@@ -8,7 +8,7 @@ import 'package:flex_reminder/l10n/app_localizations.dart'; // استيراد ا
 class TimeSlotsScreen extends StatefulWidget {
   final int initialIndex;
 
-  const TimeSlotsScreen({Key? key, this.initialIndex = 2}) : super(key: key);
+  const TimeSlotsScreen({super.key, this.initialIndex = 2});
 
   @override
   _TimeSlotsScreenState createState() => _TimeSlotsScreenState();
@@ -106,17 +106,17 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
           backgroundColor: Colors.grey[800],
           title: Text(
             localizations.confirmDelete,
-            style: TextStyle(color: Colors.white),
+            style: const TextStyle(color: Colors.white),
           ),
           content: Text(
             localizations.areYouSureDelete,
-            style: TextStyle(color: Colors.white70),
+            style: const TextStyle(color: Colors.white70),
           ),
           actions: <Widget>[
             TextButton(
               child: Text(
                 localizations.cancel,
-                style: TextStyle(color: Colors.red),
+                style: const TextStyle(color: Colors.red),
               ),
               onPressed: () {
                 Navigator.of(context).pop();
@@ -125,7 +125,7 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
             TextButton(
               child: Text(
                 localizations.delete,
-                style: TextStyle(color: Colors.red),
+                style: const TextStyle(color: Colors.red),
               ),
               onPressed: () async {
                 try {
@@ -162,7 +162,7 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
         ),
         backgroundColor: Colors.white,
         body: _isLoading
-            ? Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator())
             : Column(
                 children: [
                   Expanded(
@@ -179,11 +179,11 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.black, // لون الخلفية الأسود
-                        padding: EdgeInsets.symmetric(vertical: 16.0),
-                        shape: RoundedRectangleBorder(
+                        padding: const EdgeInsets.symmetric(vertical: 16.0),
+                        shape: const RoundedRectangleBorder(
                           borderRadius: BorderRadius.zero, // بدون حواف منحنية
                         ),
-                        minimumSize: Size(double.infinity,
+                        minimumSize: const Size(double.infinity,
                             0), // جعل العرض يأخذ كامل المساحة المتاحة
                       ),
                       onPressed: () {
@@ -191,7 +191,7 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
                       },
                       child: Text(
                         localizations.addFreeTime,
-                        style: TextStyle(color: Colors.white, fontSize: 18),
+                        style: const TextStyle(color: Colors.white, fontSize: 18),
                       ),
                     ),
                   ),
@@ -238,8 +238,8 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
                       if (value) {
                         await _apiService.createFreeTime(
                           apiDay, // إرسال اليوم باللغة الإنجليزية
-                          TimeOfDay(hour: 0, minute: 0),
-                          TimeOfDay(hour: 23, minute: 59),
+                          const TimeOfDay(hour: 0, minute: 0),
+                          const TimeOfDay(hour: 23, minute: 59),
                           true,
                         );
                       } else {
@@ -279,7 +279,7 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
             ...todaysFreeTimes
                 .where((time) => !time.isOffDay)
                 .map((freeTime) => _buildTimeSlotItem(freeTime))
-                .toList(),
+                ,
             if (todaysFreeTimes.where((time) => !time.isOffDay).isEmpty)
               Padding(
                 padding:
@@ -325,18 +325,18 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
       return;
     }
 
-    String _selectedDayDisplay = existingTime != null
+    String selectedDayDisplay = existingTime != null
         ? _convertDayFromApiFormat(existingTime.day)
         : availableDaysDisplay.first;
 
-    TimeOfDay _selectedStartTime = TimeOfDay(hour: 9, minute: 0);
-    TimeOfDay _selectedEndTime = TimeOfDay(hour: 17, minute: 0);
+    TimeOfDay selectedStartTime = const TimeOfDay(hour: 9, minute: 0);
+    TimeOfDay selectedEndTime = const TimeOfDay(hour: 17, minute: 0);
 
     if (existingTime != null) {
       final parsedStart = _parseTimeOfDay(existingTime.startTime);
       final parsedEnd = _parseTimeOfDay(existingTime.endTime);
-      if (parsedStart != null) _selectedStartTime = parsedStart;
-      if (parsedEnd != null) _selectedEndTime = parsedEnd;
+      if (parsedStart != null) selectedStartTime = parsedStart;
+      if (parsedEnd != null) selectedEndTime = parsedEnd;
     }
 
     await showDialog(
@@ -350,19 +350,19 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
                 existingTime == null
                     ? localizations.addFreeTime
                     : localizations.editFreeTime,
-                style: TextStyle(color: Colors.white),
+                style: const TextStyle(color: Colors.white),
               ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<String>(
-                      value: _selectedDayDisplay,
+                      value: selectedDayDisplay,
                       dropdownColor: Colors.grey[800],
-                      style: TextStyle(color: Colors.white),
+                      style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         labelText: localizations.day,
-                        labelStyle: TextStyle(color: Colors.white70),
+                        labelStyle: const TextStyle(color: Colors.white70),
                         filled: true,
                         fillColor: Colors.grey[900],
                         enabledBorder: OutlineInputBorder(
@@ -370,41 +370,41 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
                           borderRadius: BorderRadius.circular(8.0),
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.blue),
+                          borderSide: const BorderSide(color: Colors.blue),
                           borderRadius: BorderRadius.circular(8.0),
                         ),
-                        hintStyle: TextStyle(color: Colors.white70),
+                        hintStyle: const TextStyle(color: Colors.white70),
                       ),
                       items: availableDaysDisplay.map((day) {
                         return DropdownMenuItem(
                           value: day,
                           child:
-                              Text(day, style: TextStyle(color: Colors.white)),
+                              Text(day, style: const TextStyle(color: Colors.white)),
                         );
                       }).toList(),
                       onChanged: (value) {
                         if (value != null) {
                           setDialogState(() {
-                            _selectedDayDisplay = value;
+                            selectedDayDisplay = value;
                           });
                         }
                       },
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     ListTile(
                       title: Text(
-                        '${localizations.startTime}: ${_selectedStartTime.format(context)}',
-                        style: TextStyle(color: Colors.white),
+                        '${localizations.startTime}: ${selectedStartTime.format(context)}',
+                        style: const TextStyle(color: Colors.white),
                       ),
-                      trailing: Icon(Icons.access_time, color: Colors.white),
+                      trailing: const Icon(Icons.access_time, color: Colors.white),
                       onTap: () async {
                         final TimeOfDay? picked = await showTimePicker(
                           context: context,
-                          initialTime: _selectedStartTime,
+                          initialTime: selectedStartTime,
                           builder: (BuildContext context, Widget? child) {
                             return Theme(
                               data: ThemeData.dark().copyWith(
-                                colorScheme: ColorScheme.dark(
+                                colorScheme: const ColorScheme.dark(
                                   primary: Colors.blue,
                                   onPrimary: Colors.white,
                                   onSurface: Colors.white,
@@ -421,25 +421,25 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
                         );
                         if (picked != null) {
                           setDialogState(() {
-                            _selectedStartTime = picked;
+                            selectedStartTime = picked;
                           });
                         }
                       },
                     ),
                     ListTile(
                       title: Text(
-                        '${localizations.endTime}: ${_selectedEndTime.format(context)}',
-                        style: TextStyle(color: Colors.white),
+                        '${localizations.endTime}: ${selectedEndTime.format(context)}',
+                        style: const TextStyle(color: Colors.white),
                       ),
-                      trailing: Icon(Icons.access_time, color: Colors.white),
+                      trailing: const Icon(Icons.access_time, color: Colors.white),
                       onTap: () async {
                         final TimeOfDay? picked = await showTimePicker(
                           context: context,
-                          initialTime: _selectedEndTime,
+                          initialTime: selectedEndTime,
                           builder: (BuildContext context, Widget? child) {
                             return Theme(
                               data: ThemeData.dark().copyWith(
-                                colorScheme: ColorScheme.dark(
+                                colorScheme: const ColorScheme.dark(
                                   primary: Colors.blue,
                                   onPrimary: Colors.white,
                                   onSurface: Colors.white,
@@ -456,7 +456,7 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
                         );
                         if (picked != null) {
                           setDialogState(() {
-                            _selectedEndTime = picked;
+                            selectedEndTime = picked;
                           });
                         }
                       },
@@ -468,7 +468,7 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
                 TextButton(
                   child: Text(
                     localizations.cancel,
-                    style: TextStyle(color: Colors.red),
+                    style: const TextStyle(color: Colors.red),
                   ),
                   onPressed: () {
                     Navigator.of(context).pop();
@@ -479,15 +479,15 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
                     existingTime == null
                         ? localizations.addFreeTime
                         : localizations.editFreeTime,
-                    style: TextStyle(color: Colors.blue),
+                    style: const TextStyle(color: Colors.blue),
                   ),
                   onPressed: () async {
                     final selectedDayApi =
-                        _convertDayToApiFormat(_selectedDayDisplay);
+                        _convertDayToApiFormat(selectedDayDisplay);
                     final userChoice = await _checkAndHandleOverlap(
                       selectedDay: selectedDayApi,
-                      startTime: _selectedStartTime,
-                      endTime: _selectedEndTime,
+                      startTime: selectedStartTime,
+                      endTime: selectedEndTime,
                       existingId: existingTime?.id,
                     );
 
@@ -504,16 +504,16 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
                       if (existingTime == null) {
                         await _apiService.createFreeTime(
                           selectedDayApi,
-                          _selectedStartTime,
-                          _selectedEndTime,
+                          selectedStartTime,
+                          selectedEndTime,
                           false,
                         );
                       } else {
                         final result = await _apiService.updateFreeTime(
                           existingTime.id!,
                           selectedDayApi,
-                          _selectedStartTime,
-                          _selectedEndTime,
+                          selectedStartTime,
+                          selectedEndTime,
                           false,
                         );
                         if (result['success'] != true) {
@@ -660,8 +660,8 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
         _showTimeSlotDialog(existingTime: freeTime);
       },
       child: Container(
-        margin: EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-        padding: EdgeInsets.all(12.0),
+        margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+        padding: const EdgeInsets.all(12.0),
         decoration: BoxDecoration(
           color: freeTime.isOffDay ? Colors.grey[300] : Colors.green[100],
           borderRadius: BorderRadius.circular(8.0),
@@ -692,13 +692,13 @@ class _TimeSlotsScreenState extends State<TimeSlotsScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  icon: Icon(Icons.edit, color: Colors.blue),
+                  icon: const Icon(Icons.edit, color: Colors.blue),
                   onPressed: () {
                     _showTimeSlotDialog(existingTime: freeTime);
                   },
                 ),
                 IconButton(
-                  icon: Icon(Icons.delete, color: Colors.red),
+                  icon: const Icon(Icons.delete, color: Colors.red),
                   onPressed: () {
                     _deleteFreeTime(freeTime.id!);
                   },

@@ -6,10 +6,10 @@ class LowerNavigationBar extends StatelessWidget {
   final Function(int)? onTap; // جعل onTap اختياريًا
 
   const LowerNavigationBar({
-    Key? key,
+    super.key,
     required this.currentIndex,
     this.onTap, // لن نستخدمه مباشرة، لكن سنتركه للتوافق
-  }) : super(key: key);
+  });
 
   // دالة التنقل المركزية
   void _navigate(BuildContext context, int index) {

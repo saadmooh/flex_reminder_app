@@ -1,4 +1,4 @@
-package com.example.reminder //  Replace with your app's package name!
+package com.saadmohammed2000.flex_reminder //  Replace with your app's package name!
 
 import io.flutter.embedding.android.FlutterActivity
 import android.content.Intent

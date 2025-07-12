@@ -201,7 +201,7 @@ class NotificationService {
     );
 
     if (scheduled) {
-      final Duration checkDelay = const Duration(hours: 6);
+      const Duration checkDelay = Duration(hours: 6);
       _scheduleHiddenCheck(
         reminderId: reminderId,
         checkTime: scheduledDate.add(checkDelay),

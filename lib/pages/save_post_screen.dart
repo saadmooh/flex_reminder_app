@@ -7,8 +7,7 @@ class SavePostScreen extends StatefulWidget {
   final String? initialUrl;
   final VoidCallback? onSave;
 
-  const SavePostScreen({Key? key, this.initialUrl, this.onSave})
-      : super(key: key);
+  const SavePostScreen({super.key, this.initialUrl, this.onSave});
 
   @override
   _SavePostScreenState createState() => _SavePostScreenState();
@@ -33,9 +32,9 @@ class _SavePostScreenState extends State<SavePostScreen> {
 
   // خريطة لربط الإزاحات الزمنية باختصارات المناطق الزمنية (بدون const)
   static final Map<Duration, String> _timeZoneAbbreviations = {
-    Duration(hours: 1): 'CET', // التوقيت الرسمي لوسط أوروبا
-    Duration(hours: 2): 'CEST', // التوقيت الصيفي لوسط أوروبا
-    Duration(hours: 0): 'UTC', // التوقيت العالمي
+    const Duration(hours: 1): 'CET', // التوقيت الرسمي لوسط أوروبا
+    const Duration(hours: 2): 'CEST', // التوقيت الصيفي لوسط أوروبا
+    const Duration(hours: 0): 'UTC', // التوقيت العالمي
   };
 
   @override
@@ -189,10 +188,10 @@ class _SavePostScreenState extends State<SavePostScreen> {
         await _schedulePostNotification(title, id, nextReminderTime);
 
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text('تم حفظ المنشور'),
             backgroundColor: Colors.lightGreen,
-            duration: const Duration(seconds: 3),
+            duration: Duration(seconds: 3),
           ),
         );
 
@@ -355,7 +354,7 @@ class _SavePostScreenState extends State<SavePostScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 16.0),
                     ),
                     child: _isLoading
-                        ? Row(
+                        ? const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               SizedBox(
@@ -363,15 +362,15 @@ class _SavePostScreenState extends State<SavePostScreen> {
                                 height: 24,
                                 child: CircularProgressIndicator(
                                   valueColor:
-                                      const AlwaysStoppedAnimation<Color>(
+                                      AlwaysStoppedAnimation<Color>(
                                           Colors.white),
                                   strokeWidth: 3,
                                 ),
                               ),
-                              const SizedBox(width: 10),
+                              SizedBox(width: 10),
                               Text(
                                 'جار الحفظ...',
-                                style: const TextStyle(color: Colors.white),
+                                style: TextStyle(color: Colors.white),
                               ),
                             ],
                           )

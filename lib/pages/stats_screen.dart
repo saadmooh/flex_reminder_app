@@ -8,7 +8,7 @@ import 'package:flex_reminder/l10n/app_localizations.dart';
 class StatsScreen extends StatefulWidget {
   final int initialIndex;
 
-  const StatsScreen({Key? key, this.initialIndex = 1}) : super(key: key);
+  const StatsScreen({super.key, this.initialIndex = 1});
 
   @override
   _StatsScreenState createState() => _StatsScreenState();

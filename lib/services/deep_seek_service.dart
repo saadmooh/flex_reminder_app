@@ -215,7 +215,7 @@ class DeepSeekService {
 
       final List<dynamic> data = responseMap['data'] ?? [];
       final totalReminders = data.length;
-      final openedReminders = 0;
+      const openedReminders = 0;
       final unopenedReminders = totalReminders - openedReminders;
       final rawOldReminders = <Map<String, dynamic>>[];
 

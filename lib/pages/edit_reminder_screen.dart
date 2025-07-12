@@ -11,8 +11,7 @@ import 'package:flex_reminder/providers/reminders_notifier.dart';
 class EditReminderScreen extends StatefulWidget {
   final int reminderId; // تمرير معرف التذكير بدلاً من كائن التذكير
 
-  const EditReminderScreen({Key? key, required this.reminderId})
-      : super(key: key);
+  const EditReminderScreen({super.key, required this.reminderId});
 
   @override
   _EditReminderScreenState createState() => _EditReminderScreenState();
@@ -205,14 +204,14 @@ class _EditReminderScreenState extends State<EditReminderScreen> {
                         items: _importanceOptions.keys.map((String importance) {
                           return DropdownMenuItem<String>(
                             value: importance,
+                            enabled: importance !=
+                                _normalizeImportance(_reminder!.importance),
                             child: Text(
                               _localizations.locale.languageCode == 'ar'
                                   ? _importanceOptions[importance]!['ar']!
                                   : _importanceOptions[importance]!['en']!,
                               style: const TextStyle(color: Colors.black),
                             ),
-                            enabled: importance !=
-                                _normalizeImportance(_reminder!.importance),
                           );
                         }).toList(),
                         onChanged: (value) {
@@ -331,8 +330,7 @@ class _EditReminderScreenState extends State<EditReminderScreen> {
         print('داخل builder لـ DatePicker');
         return Theme(
           data: ThemeData.light().copyWith(
-            colorScheme: const ColorScheme.light(primary: Colors.black),
-            dialogBackgroundColor: Colors.white,
+            colorScheme: const ColorScheme.light(primary: Colors.black), dialogTheme: DialogThemeData(backgroundColor: Colors.white),
           ),
           child: child!,
         );
@@ -356,8 +354,7 @@ class _EditReminderScreenState extends State<EditReminderScreen> {
         print('داخل builder لـ TimePicker');
         return Theme(
           data: ThemeData.light().copyWith(
-            colorScheme: const ColorScheme.light(primary: Colors.black),
-            dialogBackgroundColor: Colors.white,
+            colorScheme: const ColorScheme.light(primary: Colors.black), dialogTheme: DialogThemeData(backgroundColor: Colors.white),
           ),
           child: child!,
         );
@@ -426,7 +423,7 @@ class _EditReminderScreenState extends State<EditReminderScreen> {
         await NotificationService().updateReminderNotifications(postData);
         final remindersNotifier =
             Provider.of<RemindersNotifier>(context, listen: false);
-        await remindersNotifier.updateSingleReminder(updatedReminder.id!);
+        await remindersNotifier.updateSingleReminder(updatedReminder.id);
         await _clearLastReminderId();
         await _refreshAllReminders();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -438,25 +435,21 @@ class _EditReminderScreenState extends State<EditReminderScreen> {
         Navigator.pop(context, updatedReminder);
       } else if (_isNextReminderTimeChanged) {
         final result = await _apiService.updateReminder(updatedReminder);
-        if (result != null) {
-          await NotificationService()
-              .updateReminderNotifications(result['post']);
-          final remindersNotifier =
-              Provider.of<RemindersNotifier>(context, listen: false);
-          await remindersNotifier.updateSingleReminder(updatedReminder.id!);
-          await _clearLastReminderId();
-          await _refreshAllReminders();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(_localizations.reminderUpdatedSuccess),
-              backgroundColor: Colors.lightGreen,
-            ),
-          );
-          Navigator.pop(context, updatedReminder);
-        } else {
-          throw Exception(_localizations.unexpectedError);
-        }
-      }
+        await NotificationService()
+            .updateReminderNotifications(result['post']);
+        final remindersNotifier =
+            Provider.of<RemindersNotifier>(context, listen: false);
+        await remindersNotifier.updateSingleReminder(updatedReminder.id!);
+        await _clearLastReminderId();
+        await _refreshAllReminders();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_localizations.reminderUpdatedSuccess),
+            backgroundColor: Colors.lightGreen,
+          ),
+        );
+        Navigator.pop(context, updatedReminder);
+            }
     } catch (e) {
       print('خطأ في _saveReminder: $e');
       ScaffoldMessenger.of(context).showSnackBar(

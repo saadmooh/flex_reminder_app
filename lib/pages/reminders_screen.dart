@@ -88,7 +88,7 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
 class RemindersScreen extends StatefulWidget {
   final int initialIndex;
 
-  const RemindersScreen({Key? key, this.initialIndex = 0}) : super(key: key);
+  const RemindersScreen({super.key, this.initialIndex = 0});
 
   @override
   _RemindersScreenState createState() => _RemindersScreenState();
@@ -134,8 +134,8 @@ class _RemindersScreenState extends State<RemindersScreen>
     if (_searchQuery.isNotEmpty) {
       filtered = filtered
           .where((r) =>
-              r.title!.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-              (r.id?.toString().contains(_searchQuery) ?? false))
+              r.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+              (r.id.toString().contains(_searchQuery) ?? false))
           .toList();
     }
 
@@ -636,7 +636,7 @@ class _RemindersScreenState extends State<RemindersScreen>
             context,
             MaterialPageRoute(
               builder: (context) => ReminderDetailScreen(
-                reminderId: reminder.id!,
+                reminderId: reminder.id,
               ),
             ),
           ) as Map<String, dynamic>?;

@@ -79,7 +79,7 @@ class AuthProvider with ChangeNotifier {
       }
     } catch (e) {
       _errorMessage = e.toString();
-      throw e;
+      rethrow;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -113,7 +113,7 @@ class AuthProvider with ChangeNotifier {
       }
     } catch (e) {
       _errorMessage = e.toString();
-      throw e;
+      rethrow;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -149,7 +149,7 @@ class AuthProvider with ChangeNotifier {
       await _apiService.verifyEmail(email, code);
     } catch (e) {
       _errorMessage = 'Failed to verify email: $e';
-      throw e;
+      rethrow;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -165,7 +165,7 @@ class AuthProvider with ChangeNotifier {
       await _apiService.resendVerificationCode(email);
     } catch (e) {
       _errorMessage = 'Failed to resend verification code: $e';
-      throw e;
+      rethrow;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -180,7 +180,7 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Failed to store token: $e';
-      throw e;
+      rethrow;
     }
     print(await _storage.read(key: 'auth_token'));
   }
@@ -206,7 +206,7 @@ class AuthProvider with ChangeNotifier {
       return response;
     } catch (e) {
       _errorMessage = 'Failed to check subscription: $e';
-      throw e;
+      rethrow;
     } finally {
       _isLoading = false;
       notifyListeners();

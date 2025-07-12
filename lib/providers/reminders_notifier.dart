@@ -82,7 +82,7 @@ class RemindersNotifier extends ChangeNotifier {
       }
     } catch (e) {
       print('خطأ في جلب التذكير $reminderId: $e');
-      throw e;
+      rethrow;
     }
     return null;
   }
@@ -136,9 +136,9 @@ class RemindersNotifier extends ChangeNotifier {
           // فحص وإعادة جدولة التذكيرات غير المقروءة
           await _checkAndRescheduleUnreadReminders();
 
-          _categories = [allLabel]..addAll(response.categories);
-          _complexities = [allLabel]..addAll(response.complexities);
-          _domains = [allLabel]..addAll(response.domains ?? []);
+          _categories = [allLabel, ...response.categories];
+          _complexities = [allLabel, ...response.complexities];
+          _domains = [allLabel, ...?response.domains];
           _totalReminders = response.total ?? 0;
           _currentPage = 2;
 
@@ -174,7 +174,7 @@ class RemindersNotifier extends ChangeNotifier {
       }
     } catch (e) {
       print('خطأ في جلب التذكيرات: $e');
-      throw e;
+      rethrow;
     } finally {
       _isLoading = false;
       _isLoadingMore = false;
@@ -199,7 +199,7 @@ class RemindersNotifier extends ChangeNotifier {
       }
     } catch (e) {
       print('خطأ في تحديث التذكير: $e');
-      throw e;
+      rethrow;
     }
   }
 
@@ -213,7 +213,7 @@ class RemindersNotifier extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       print('خطأ في حذف التذكير: $e');
-      throw e;
+      rethrow;
     }
   }
 
@@ -352,10 +352,8 @@ class RemindersNotifier extends ChangeNotifier {
       await prefs.setString(_categoriesKey, jsonEncode(response.categories));
       await prefs.setString(
           _complexitiesKey, jsonEncode(response.complexities));
-      if (response.domains != null) {
-        await prefs.setString(_domainsKey, jsonEncode(response.domains!));
-      }
-      await prefs.setInt(_totalKey, response.total ?? 0);
+      await prefs.setString(_domainsKey, jsonEncode(response.domains!));
+          await prefs.setInt(_totalKey, response.total ?? 0);
     } catch (e) {
       print('خطأ في حفظ البيانات: $e');
     }

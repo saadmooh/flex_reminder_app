@@ -215,7 +215,7 @@ class UserService {
     if (!await _apiConfig.checkTokenValidity()) {
       throw Exception('Invalid or expired token');
     }
-    final url = '${ApiConfig.API_BASE_URL}/user/update';
+    const url = '${ApiConfig.API_BASE_URL}/user/update';
     final token = await _apiConfig.getToken();
     if (token == null) throw Exception('No authentication token found');
 

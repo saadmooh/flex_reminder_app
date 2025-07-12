@@ -3,7 +3,7 @@ import 'package:flex_reminder/services/api_service.dart';
 import 'package:flex_reminder/l10n/app_localizations.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
-  const ResetPasswordScreen({Key? key}) : super(key: key);
+  const ResetPasswordScreen({super.key});
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();

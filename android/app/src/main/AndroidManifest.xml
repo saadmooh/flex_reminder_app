@@ -10,7 +10,7 @@
         android:icon="@mipmap/launcher_icon"
          android:usesCleartextTraffic="true">
         <activity
-            android:name=".MainActivity"
+         android:name="com.saadmohammed2000.flex_reminder.MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:theme="@style/LaunchTheme"

@@ -13,8 +13,7 @@ import 'package:flex_reminder/providers/reminders_notifier.dart';
 class ReminderDetailScreen extends StatefulWidget {
   final int reminderId;
 
-  const ReminderDetailScreen({Key? key, required this.reminderId})
-      : super(key: key);
+  const ReminderDetailScreen({super.key, required this.reminderId});
 
   @override
   _ReminderDetailScreenState createState() => _ReminderDetailScreenState();
@@ -93,7 +92,7 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
       if (response['success'] == true) {
         // تحديث التذكير في Notifier
         final updatedReminder = Reminder.fromJson(response['post']);
-        await remindersNotifier.updateSingleReminder(updatedReminder.id!);
+        await remindersNotifier.updateSingleReminder(updatedReminder.id);
         setState(() => _reminder = updatedReminder);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -185,7 +184,7 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                         context,
                         MaterialPageRoute(
                           builder: (_) => EditReminderScreen(
-                            reminderId: _reminder!.id!,
+                            reminderId: _reminder!.id,
                           ),
                         ),
                       );
@@ -317,7 +316,7 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                                 Provider.of<RemindersNotifier>(context,
                                     listen: false);
                             await remindersNotifier
-                                .updateSingleReminder(_reminder!.id!);
+                                .updateSingleReminder(_reminder!.id);
                             if (!await launchUrlString(_reminder!.url!)) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
@@ -388,10 +387,10 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
               TextButton(
                 onPressed: () async {
                   try {
-                    if (_reminder != null && _reminder!.id != null) {
-                      await ApiService().deleteReminder(_reminder!.id!);
+                    if (_reminder != null) {
+                      await ApiService().deleteReminder(_reminder!.id);
                       await NotificationService()
-                          .cancelReminderNotifications(_reminder!.id!);
+                          .cancelReminderNotifications(_reminder!.id);
                       await _clearLastReminderId();
                       await _refreshAllReminders();
                       Navigator.pop(context);

@@ -883,7 +883,7 @@ class _SubscriptionManagementScreenState
                 ),
               ),
             );
-          }).toList()
+          })
         else
           Text(
             localizations.noPlansAvailable,

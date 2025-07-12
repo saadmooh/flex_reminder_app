@@ -1,4 +1,5 @@
 /// نموذج الاستجابة لقائمة التذكيرات
+library;
 import 'package:flex_reminder/models/reminder.dart';
 
 class RemindersResponse {

@@ -1,8 +1,8 @@
 plugins {
     id "com.android.application"
-    id "kotlin-android"
+    id "kotlin-android" // بلجن رسمي لكوتلن
     id "dev.flutter.flutter-gradle-plugin"
-    id "com.google.gms.google-services" apply false
+    id "com.google.gms.google-services"
 }
 
 def localProperties = new Properties()
@@ -13,56 +13,43 @@ if (localPropertiesFile.exists()) {
     }
 }
 
-def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
-if (flutterVersionCode == null) {
-    flutterVersionCode = '1'
-}
-
-def flutterVersionName = localProperties.getProperty('flutter.versionName')
-if (flutterVersionName == null) {
-    flutterVersionName = '1.0'
-}
+def flutterVersionCode = localProperties.getProperty('flutter.versionCode') ?: '1'
+def flutterVersionName = localProperties.getProperty('flutter.versionName') ?: '1.0'
 
 android {
-    namespace "com.example.reminder"
-    compileSdkVersion flutter.compileSdkVersion
-    ndkVersion flutter.ndkVersion
+    namespace "com.saadmohammed2000.flex_reminder"
+    compileSdk 35
 
-     packagingOptions {
-        pickFirst '**/libc++_shared.so'
-        pickFirst '**/libjsc.so'
+    defaultConfig {
+       applicationId "com.saadmohammed2000.flex_reminder"
+
+        minSdkVersion 23 // ✅ مهم بسبب NDK
+        targetSdkVersion 35
+        versionCode flutterVersionCode.toInteger()
+        versionName flutterVersionName
+        multiDexEnabled true
     }
-    
-    // تحديد إصدار NDK بشكل صريح
-    ndkVersion "26.3.11579264"
+
+    buildTypes {
+        release {
+            // مخصص لتوقيع النسخة أو التعديل لاحقًا
+            signingConfig signingConfigs.debug
+        }
+    }
+
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
-        coreLibraryDesugaringEnabled true 
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+        coreLibraryDesugaringEnabled true
     }
 
     kotlinOptions {
-        jvmTarget = '11'
+        jvmTarget = '1.8'
     }
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
     }
-
-    defaultConfig {
-        applicationId "com.example.reminder"
-        minSdkVersion 23
-        targetSdkVersion flutter.targetSdkVersion
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
-    }
-
-    buildTypes {
-        release {
-            signingConfig signingConfigs.debug
-        }
-    }
-
 }
 
 flutter {
@@ -70,8 +57,11 @@ flutter {
 }
 
 dependencies {
+    def kotlin_version = "1.9.23" // ✅ عرّف النسخة هنا
+
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:1.2.2'
-    implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
-    implementation("com.google.firebase:firebase-analytics")   
+
+    implementation platform("com.google.firebase:firebase-bom:33.16.0")
+    implementation "com.google.firebase:firebase-analytics"
 }

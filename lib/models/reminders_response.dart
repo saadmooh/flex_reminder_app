@@ -1,5 +1,3 @@
-/// نموذج الاستجابة لقائمة التذكيرات
-library;
 import 'package:flex_reminder/models/reminder.dart';
 
 class RemindersResponse {
@@ -39,21 +37,21 @@ class RemindersResponse {
 
     List<String> categoriesList = (json['categories'] as List<dynamic>?)
             ?.map((item) => item.toString().trim())
-            .where((item) => item.isNotEmpty) // Filter out empty strings
+            .where((item) => item.isNotEmpty)
             .toList() ??
         [];
 
     List<String> complexitiesList = (json['complexities'] as List<dynamic>?)
             ?.map((item) => item.toString().trim())
-            .where((item) => item.isNotEmpty) // Filter out empty strings
+            .where((item) => item.isNotEmpty)
             .toList() ??
         [];
 
     List<String> domainsList = (json['domains'] as List<dynamic>?)
             ?.map((item) => item.toString().trim())
-            .where((item) => item.isNotEmpty) // Filter out empty strings
+            .where((item) => item.isNotEmpty)
             .toList() ??
-        []; // Default to empty list if domains is null
+        [];
 
     return RemindersResponse(
       reminders: remindersList,
@@ -68,13 +66,12 @@ class RemindersResponse {
     );
   }
 
-  /// تحويل كائن RemindersResponse إلى JSON
   Map<String, dynamic> toJson() {
     return {
       'reminders': reminders.map((r) => r.toJson()).toList(),
       'categories': categories,
       'complexities': complexities,
-      'domains': domains, // Include domains in JSON
+      'domains': domains,
       if (total != null) 'total': total,
       if (currentPage != null) 'current_page': currentPage,
       if (lastPage != null) 'last_page': lastPage,

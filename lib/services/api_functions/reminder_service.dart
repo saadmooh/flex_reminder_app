@@ -157,52 +157,57 @@ class ReminderService {
     }
   }
 
-  Future<Reminder> getReminderById(int postId) async {
-    if (!await _apiConfig.checkTokenValidity()) {
-      throw Exception('Invalid or expired token');
-    }
-
-    try {
-      final url =
-          Uri.parse('${ApiConfig.API_BASE_URL}/reminderById?id=$postId');
-      final token = await _apiConfig.getToken();
-      final response = await http.get(
-        url,
-        headers: {
-          'X-API-Password': ApiConfig.API_PASSWORD,
-          if (token != null) 'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
-        },
-      );
-
-      print('Get Reminder By ID Response: ${response.body}');
-
-      if (response.statusCode == 200) {
-        if (response.body.isEmpty) {
-          throw Exception('Empty response received');
-        }
-        try {
-          final decodedData = json.decode(response.body);
-          return Reminder.fromJson(decodedData);
-        } on FormatException catch (e) {
-          print('JSON parsing error: ${response.body}');
-          throw Exception('Invalid response format: ${e.message}');
-        }
-      } else if (response.statusCode == 404) {
-        throw Exception('Reminder not found');
-      } else {
-        try {
-          final errorData = json.decode(response.body);
-          throw Exception(errorData['message'] ?? 'Failed to load reminder');
-        } catch (e) {
-          throw Exception('Failed to load reminder: ${response.statusCode}');
-        }
-      }
-    } catch (e) {
-      print('Error in getReminderById: $e');
-      rethrow;
-    }
+Future<Reminder> getReminderById(int postId) async {
+  if (!await _apiConfig.checkTokenValidity()) {
+    throw Exception('Invalid or expired token');
   }
+
+  try {
+    final url = Uri.parse('${ApiConfig.API_BASE_URL}/reminderById?id=$postId');
+    final token = await _apiConfig.getToken();
+    final response = await http.get(
+      url,
+      headers: {
+        'X-API-Password': ApiConfig.API_PASSWORD,
+        if (token != null) 'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      },
+    );
+
+    print('Get Reminder By ID Response: ${response.body}');
+
+    if (response.statusCode == 200) {
+      if (response.body.isEmpty) {
+        throw Exception('Empty response received');
+      }
+      try {
+        final decodedData = json.decode(response.body);
+        
+        // التحقق من وجود خاصية reminder في الاستجابة
+        if (decodedData['reminder'] != null) {
+          return Reminder.fromJson(decodedData['reminder']);
+        } else {
+          throw Exception('No reminder data found in response');
+        }
+      } on FormatException catch (e) {
+        print('JSON parsing error: ${response.body}');
+        throw Exception('Invalid response format: ${e.message}');
+      }
+    } else if (response.statusCode == 404) {
+      throw Exception('Reminder not found');
+    } else {
+      try {
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['message'] ?? 'Failed to load reminder');
+      } catch (e) {
+        throw Exception('Failed to load reminder: ${response.statusCode}');
+      }
+    }
+  } catch (e) {
+    print('Error in getReminderById: $e');
+    rethrow;
+  }
+}
 
   Future<Map<String, dynamic>> reschedulePost(
       String postUrl, String importance) async {

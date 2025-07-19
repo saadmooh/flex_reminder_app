@@ -8,7 +8,6 @@ import 'package:flex_reminder/pages/time_slots_screen.dart';
 import 'package:flex_reminder/pages/save_post_screen.dart';
 import 'package:flex_reminder/pages/stats_screen.dart';
 import 'package:flex_reminder/pages/splash_screen.dart';
-//import 'package:flex_reminder/pages/notification_settings_page.dart'; // إضافة المسار
 import 'package:flex_reminder/globals.dart';
 import 'package:flex_reminder/utils/language_manager.dart';
 import 'package:flex_reminder/l10n/app_localizations.dart';
@@ -16,19 +15,142 @@ import 'package:flex_reminder/pages/reset_password_screen.dart';
 import 'package:flex_reminder/pages/subscription_management_screen.dart';
 import 'package:flex_reminder/pages/email_verification_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart'; // إضافة هذا
 import 'package:flex_reminder/firebase_options.dart';
 import 'package:flex_reminder/providers/auth_provider.dart';
 import 'package:flex_reminder/providers/reminders_notifier.dart';
 import 'package:flex_reminder/services/notification_service.dart';
 import 'package:flex_reminder/services/fcm_service.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+// Background Handler - يجب أن يكون خارج main()
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // تهيئة Firebase إذا لم تكن مُهيأة
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  
+  print('Background Handler - Message ID: ${message.messageId}');
+  print('Background Handler - Data: ${message.data}');
+  
+  try {
+    final String title = message.data['title'] ?? message.notification?.title ?? '';
+    final String body = message.data['body'] ?? message.notification?.body ?? '';
+    
+    if (title.isEmpty || body.isEmpty) {
+      print('بيانات الرسالة غير مكتملة');
+      return;
+    }
+    
+    int? reminderId;
+    try {
+      reminderId = int.parse(body);
+    } catch (e) {
+      print('خطأ في تحويل body إلى رقم: $e');
+      return;
+    }
+    
+    if (reminderId == null) {
+      print('معرف التذكير غير صحيح');
+      return;
+    }
+    
+    print('Background: معالجة العملية $title للتذكير $reminderId');
+    
+    // إنشاء instance من RemindersNotifier
+    final remindersNotifier = RemindersNotifier();
+    
+    // معالجة الرسالة حسب النوع
+    switch (title.toLowerCase()) {
+      case 'reschedule':
+        await _handleRescheduleBackground(remindersNotifier, reminderId);
+        break;
+      case 'update':
+        await _handleUpdateBackground(remindersNotifier, reminderId);
+        break;
+      case 'new':
+        await _handleNewBackground(remindersNotifier, reminderId);
+        break;
+      case 'delete':
+        await _handleDeleteBackground(remindersNotifier, reminderId);
+        break;
+      case 'markasread':
+        await _handleMarkAsReadBackground(remindersNotifier, reminderId);
+        break;
+      default:
+        print('نوع العملية غير مدعوم: $title');
+    }
+  } catch (e) {
+    print('خطأ في معالجة الرسالة في الخلفية: $e');
+  }
+}
+
+// معالجات الخلفية
+Future<void> _handleRescheduleBackground(RemindersNotifier notifier, int reminderId) async {
+  try {
+    print('Background: معالجة إعادة جدولة التذكير: $reminderId');
+    await notifier.updateSingleReminder(reminderId);
+    print('Background: تم إعادة جدولة التذكير $reminderId بنجاح');
+  } catch (e) {
+    print('Background: خطأ في معالجة إعادة الجدولة: $e');
+  }
+}
+
+Future<void> _handleUpdateBackground(RemindersNotifier notifier, int reminderId) async {
+  try {
+    print('Background: معالجة تحديث التذكير: $reminderId');
+    await notifier.updateSingleReminder(reminderId);
+    print('Background: تم تحديث التذكير $reminderId بنجاح');
+  } catch (e) {
+    print('Background: خطأ في معالجة التحديث: $e');
+  }
+}
+
+Future<void> _handleNewBackground(RemindersNotifier notifier, int reminderId) async {
+  try {
+    print('Background: معالجة تذكير جديد: $reminderId');
+    await notifier.updateSingleReminder(reminderId);
+    print('Background: تم معالجة التذكير الجديد $reminderId بنجاح');
+  } catch (e) {
+    print('Background: خطأ في معالجة التذكير الجديد: $e');
+  }
+}
+
+Future<void> _handleDeleteBackground(RemindersNotifier notifier, int reminderId) async {
+  try {
+    print('Background: معالجة حذف التذكير: $reminderId');
+    await notifier.deleteReminderLocally(reminderId);
+    print('Background: تم حذف التذكير $reminderId بنجاح');
+  } catch (e) {
+    print('Background: خطأ في معالجة حذف التذكير: $e');
+  }
+}
+
+Future<void> _handleMarkAsReadBackground(RemindersNotifier notifier, int reminderId) async {
+  try {
+    print('Background: معالجة تحديد التذكير كمقروء: $reminderId');
+    await notifier.updateSingleReminder(reminderId);
+    print('Background: تم تحديد التذكير $reminderId كمقروء بنجاح');
+  } catch (e) {
+    print('Background: خطأ في معالجة تحديد التذكير كمقروء: $e');
+  }
+}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // تهيئة Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  
+  // تسجيل Background Handler قبل تشغيل التطبيق
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  
+  // تهيئة الخدمات
   await NotificationService().init();
   await FcmService().init();
+  
   runApp(
     MultiProvider(
       providers: [
@@ -41,6 +163,7 @@ void main() async {
   );
 }
 
+// باقي الكود كما هو...
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -138,7 +261,7 @@ class MyApp extends StatelessWidget {
                   );
                 }
                 return MaterialPageRoute(
-                    builder: (_) => const RemindersScreen()); // Fallback
+                    builder: (_) => const RemindersScreen());
               case '/time_slots':
                 return MaterialPageRoute(
                     builder: (_) => const TimeSlotsScreen());

@@ -36,26 +36,38 @@ class Reminder {
   });
 
   Reminder copyWith({
+    int? id,
+    int? userId,
     String? title,
+    String? content,
+    String? url,
     String? importance,
+    List<String>? scheduledTimes,
     String? nextReminderTime,
+    String? category,
+    String? complexity,
+    String? domain,
+    String? imageUrl,
+    String? createdAt,
+    String? updatedAt,
+    int? isOpened,
   }) {
     return Reminder(
-      id: id,
-      userId: userId,
-      url: url,
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
       title: title ?? this.title,
-      content: content,
-      imageUrl: imageUrl,
+      content: content ?? this.content,
+      url: url ?? this.url,
       importance: importance ?? this.importance,
-      scheduledTimes: scheduledTimes,
+      scheduledTimes: scheduledTimes ?? this.scheduledTimes,
       nextReminderTime: nextReminderTime ?? this.nextReminderTime,
-      isOpened: isOpened,
-      createdAt: createdAt,
-      updatedAt: DateTime.now().toIso8601String(),
-      category: category,
-      complexity: complexity,
-      domain: domain,
+      category: category ?? this.category,
+      complexity: complexity ?? this.complexity,
+      domain: domain ?? this.domain,
+      imageUrl: imageUrl ?? this.imageUrl,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isOpened: isOpened ?? this.isOpened,
     );
   }
 
@@ -77,8 +89,7 @@ class Reminder {
         if (value == null) return [];
         if (value is String) {
           try {
-            final List<dynamic> parsed =
-                jsonDecode(value) as List<dynamic>? ?? [];
+            final List<dynamic> parsed = jsonDecode(value) as List<dynamic>? ?? [];
             return parsed.map((e) => e.toString().trim()).toList();
           } catch (e) {
             print('Error parsing scheduled_times: $e');

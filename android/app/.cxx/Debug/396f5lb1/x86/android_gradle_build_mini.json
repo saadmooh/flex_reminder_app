@@ -1,0 +1,20 @@
+{
+  "buildFiles": [
+    "/home/user/flutter/packages/flutter_tools/gradle/src/main/scripts/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/home/user/.androidsdkroot/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/home/user/flex_reminder_app/android/app/.cxx/Debug/396f5lb1/x86",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/home/user/.androidsdkroot/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/home/user/flex_reminder_app/android/app/.cxx/Debug/396f5lb1/x86",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {}
+}

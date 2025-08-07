@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flex_reminder/models/reminder.dart';
 import 'package:flex_reminder/services/notification_service.dart';
 import 'package:flex_reminder/pages/save_post_screen.dart';
@@ -98,12 +100,16 @@ class _RemindersScreenState extends State<RemindersScreen>
     with SingleTickerProviderStateMixin {
   String _searchQuery = '';
   StreamSubscription? _intentSub;
+  StreamSubscription<List<ConnectivityResult>>?
+      _connectivitySubscription; // Fixed type
   String? _sharedText;
   String? _selectedCategory;
   String? _selectedComplexity;
   String? _selectedDomain;
   late TabController _tabController;
   late int _currentNavIndex;
+  bool _isOnline = true;
+  bool _hasTriedOnlineLoad = false;
 
   @override
   void initState() {
@@ -111,8 +117,9 @@ class _RemindersScreenState extends State<RemindersScreen>
     _tabController = TabController(length: 2, vsync: this);
     _currentNavIndex = widget.initialIndex;
     _listenForShareData();
+    _initializeConnectivity();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<RemindersNotifier>(context, listen: false).initialize();
+      _initializeReminders();
     });
   }
 
@@ -120,7 +127,119 @@ class _RemindersScreenState extends State<RemindersScreen>
   void dispose() {
     _tabController.dispose();
     _intentSub?.cancel();
+    _connectivitySubscription?.cancel();
     super.dispose();
+  }
+
+  // مراقبة حالة الاتصال بالإنترنت
+  void _initializeConnectivity() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    _updateConnectionStatus(
+        connectivityResult); // This now returns List<ConnectivityResult>
+
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
+      (List<ConnectivityResult> results) {
+        // Fixed parameter type
+        _updateConnectionStatus(results);
+      },
+    );
+  }
+
+  void _updateConnectionStatus(List<ConnectivityResult> connectivityResults) {
+    // Fixed parameter type
+    final bool wasOnline = _isOnline;
+    setState(() {
+      // Check if any connection type is available (not none)
+      _isOnline = connectivityResults
+          .any((result) => result != ConnectivityResult.none);
+    });
+
+    // إذا عاد الاتصال، حاول تحديث البيانات
+    if (!wasOnline && _isOnline && mounted) {
+      print('الاتصال عاد، تحديث البيانات...');
+      _refreshRemindersIfOnline();
+    } else if (!_isOnline) {
+      print('لا يوجد اتصال بالإنترنت، استخدام البيانات المحلية');
+      _showOfflineSnackBar();
+    }
+  }
+
+  void _showOfflineSnackBar() {
+    final isArabic = Provider.of<LanguageManager>(context, listen: false)
+            .locale
+            .languageCode ==
+        'ar';
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          isArabic
+              ? 'لا يوجد اتصال بالإنترنت - عرض البيانات المحلية'
+              : 'No internet connection - showing offline data',
+          style: const TextStyle(color: Colors.white),
+        ),
+        backgroundColor: Colors.orange,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  // تهيئة التذكيرات مع التحقق من حالة الاتصال
+  void _initializeReminders() async {
+    final remindersNotifier =
+        Provider.of<RemindersNotifier>(context, listen: false);
+
+    if (_isOnline && !_hasTriedOnlineLoad) {
+      print('محاولة تحميل البيانات من الإنترنت...');
+      _hasTriedOnlineLoad = true;
+      try {
+        await remindersNotifier.initialize();
+      } catch (e) {
+        print('فشل تحميل البيانات من الإنترنت: $e');
+        // في حالة الفشل، استخدم البيانات المحلية
+        await _loadOfflineDataFallback(remindersNotifier);
+      }
+    } else {
+      print('تحميل البيانات المحلية فقط...');
+      await _loadOfflineDataFallback(remindersNotifier);
+    }
+  }
+
+  // Fallback method for loading offline data
+  Future<void> _loadOfflineDataFallback(RemindersNotifier remindersNotifier) async {
+  try {
+    print('تحميل البيانات المحلية...');
+    await remindersNotifier.loadCachedData();
+  } catch (e) {
+    print('خطأ في تحميل البيانات المحلية: $e');
+  }
+}
+  // تحديث البيانات عند عودة الاتصال
+  Future<void> _refreshRemindersIfOnline() async {
+    if (!_isOnline) return;
+
+    final remindersNotifier =
+        Provider.of<RemindersNotifier>(context, listen: false);
+    try {
+      await remindersNotifier.forceRefreshReminders();
+      final isArabic = Provider.of<LanguageManager>(context, listen: false)
+              .locale
+              .languageCode ==
+          'ar';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isArabic ? 'تم تحديث البيانات بنجاح' : 'Data updated successfully',
+            style: const TextStyle(color: Colors.white),
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      print('فشل تحديث البيانات: $e');
+    }
   }
 
   List<Reminder> _getFilteredReminders(bool showOpened) {
@@ -190,6 +309,28 @@ class _RemindersScreenState extends State<RemindersScreen>
   }
 
   Future<void> _showSavePostModal(String? sharedUrl) async {
+    // التحقق من الاتصال قبل السماح بإضافة منشور جديد
+    if (!_isOnline && sharedUrl != null) {
+      final isArabic = Provider.of<LanguageManager>(context, listen: false)
+              .locale
+              .languageCode ==
+          'ar';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isArabic
+                ? 'يتطلب إضافة منشور جديد اتصال بالإنترنت'
+                : 'Adding new posts requires internet connection',
+            style: const TextStyle(color: Colors.white),
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
     print('عرض نافذة حفظ منشور مع رابط: $sharedUrl');
     final result = await showModalBottomSheet(
       context: context,
@@ -206,20 +347,28 @@ class _RemindersScreenState extends State<RemindersScreen>
           initialUrl: sharedUrl,
           onSave: () {
             print('saved post, triggering reminders refresh');
-            Provider.of<RemindersNotifier>(context, listen: false)
-                .forceRefreshReminders();
+            if (_isOnline) {
+              Provider.of<RemindersNotifier>(context, listen: false)
+                  .forceRefreshReminders();
+            }
           },
         ),
       ),
     );
 
-    if (result == true) {
+    if (result == true && _isOnline) {
       await Provider.of<RemindersNotifier>(context, listen: false)
           .forceRefreshReminders();
     }
   }
 
   void _loadMoreReminders(bool showOpened) {
+    // تحميل المزيد فقط إذا كان هناك اتصال بالإنترنت
+    if (!_isOnline) {
+      print('لا يوجد اتصال بالإنترنت لتحميل المزيد من التذكيرات');
+      return;
+    }
+
     final remindersNotifier =
         Provider.of<RemindersNotifier>(context, listen: false);
     if (!remindersNotifier.isLoadingMore &&
@@ -261,15 +410,45 @@ class _RemindersScreenState extends State<RemindersScreen>
   @override
   Widget build(BuildContext context) {
     final localizations = AppLocalizations.of(context);
+    final isArabic = Provider.of<LanguageManager>(context, listen: false)
+            .locale
+            .languageCode ==
+        'ar';
+
     return Consumer2<LanguageManager, RemindersNotifier>(
       builder: (context, languageManager, remindersNotifier, child) {
         return DefaultTabController(
           length: 2,
           child: Scaffold(
-            appBar: UpperAppBar(
-              showSearch: true,
-              onSearchPressed: _showSearch,
-              showLeading: false,
+            appBar: PreferredSize(
+              preferredSize: const Size.fromHeight(kToolbarHeight),
+              child: Column(
+                children: [
+                  // شريط حالة الاتصال
+                  if (!_isOnline)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      color: Colors.orange,
+                      child: Text(
+                        isArabic
+                            ? 'وضع عدم الاتصال - عرض البيانات المحلية'
+                            : 'Offline Mode - Showing Local Data',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  UpperAppBar(
+                    showSearch: true,
+                    onSearchPressed: _showSearch,
+                    showLeading: false,
+                  ),
+                ],
+              ),
             ),
             backgroundColor: Colors.white,
             body: Column(
@@ -303,9 +482,12 @@ class _RemindersScreenState extends State<RemindersScreen>
               onPressed: () {
                 _showSavePostModal(null);
               },
-              backgroundColor: Colors.black,
+              backgroundColor: _isOnline ? Colors.black : Colors.grey,
               shape: const CircleBorder(),
-              child: const Icon(Icons.add, color: Colors.white),
+              child: Icon(
+                Icons.add,
+                color: Colors.white,
+              ),
             ),
             bottomNavigationBar: LowerNavigationBar(
               currentIndex: _currentNavIndex,
@@ -331,7 +513,9 @@ class _RemindersScreenState extends State<RemindersScreen>
       onNotification: (ScrollNotification scrollInfo) {
         if (scrollInfo.metrics.pixels >=
                 scrollInfo.metrics.maxScrollExtent - 200 &&
-            !remindersNotifier.isLoadingMore) {
+            !remindersNotifier.isLoadingMore &&
+            _isOnline) {
+          // تحميل المزيد فقط عند وجود اتصال
           _loadMoreReminders(showOpened);
         }
         return false;
@@ -341,11 +525,22 @@ class _RemindersScreenState extends State<RemindersScreen>
           _buildFilterBar(),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              isArabic
-                  ? 'عدد التذكيرات $listName: ${filteredReminders.length}'
-                  : 'Number of $listName Reminders: ${filteredReminders.length}',
-              style: const TextStyle(color: Colors.black, fontSize: 14),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  isArabic
+                      ? 'عدد التذكيرات $listName: ${filteredReminders.length}'
+                      : 'Number of $listName Reminders: ${filteredReminders.length}',
+                  style: const TextStyle(color: Colors.black, fontSize: 14),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  _isOnline ? Icons.cloud_done : Icons.cloud_off,
+                  size: 16,
+                  color: _isOnline ? Colors.green : Colors.orange,
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -355,36 +550,66 @@ class _RemindersScreenState extends State<RemindersScreen>
                   )
                 : filteredReminders.isEmpty
                     ? Center(
-                        child: Text(
-                          showOpened
-                              ? AppLocalizations.of(context)?.noReadReminders ??
-                                  'No read reminders'
-                              : AppLocalizations.of(context)
-                                      ?.noUnreadReminders ??
-                                  'No unread reminders',
-                          style: const TextStyle(color: Colors.black),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _isOnline ? Icons.inbox : Icons.cloud_off,
+                              size: 64,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              showOpened
+                                  ? AppLocalizations.of(context)
+                                          ?.noReadReminders ??
+                                      'No read reminders'
+                                  : AppLocalizations.of(context)
+                                          ?.noUnreadReminders ??
+                                      'No unread reminders',
+                              style: const TextStyle(color: Colors.black),
+                            ),
+                            if (!_isOnline) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                isArabic
+                                    ? 'تحقق من اتصال الإنترنت للمزيد من البيانات'
+                                    : 'Check internet connection for more data',
+                                style: const TextStyle(
+                                  color: Colors.orange,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(8.0),
-                        itemCount: filteredReminders.length +
-                            (filteredReminders.length <
-                                    remindersNotifier.totalReminders
-                                ? 1
-                                : 0),
-                        itemBuilder: (context, index) {
-                          if (index == filteredReminders.length &&
-                              filteredReminders.length <
-                                  remindersNotifier.totalReminders) {
-                            return remindersNotifier.isLoadingMore
-                                ? const Center(
-                                    child: CircularProgressIndicator(
-                                        color: Colors.black),
-                                  )
-                                : const SizedBox.shrink();
-                          }
-                          return _buildReminderCard(filteredReminders[index]);
-                        },
+                    : RefreshIndicator(
+                        onRefresh: () => _refreshRemindersIfOnline(),
+                        color: Colors.black,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(8.0),
+                          itemCount: filteredReminders.length +
+                              (filteredReminders.length <
+                                          remindersNotifier.totalReminders &&
+                                      _isOnline
+                                  ? 1
+                                  : 0),
+                          itemBuilder: (context, index) {
+                            if (index == filteredReminders.length &&
+                                filteredReminders.length <
+                                    remindersNotifier.totalReminders &&
+                                _isOnline) {
+                              return remindersNotifier.isLoadingMore
+                                  ? const Center(
+                                      child: CircularProgressIndicator(
+                                          color: Colors.black),
+                                    )
+                                  : const SizedBox.shrink();
+                            }
+                            return _buildReminderCard(filteredReminders[index]);
+                          },
+                        ),
                       ),
           ),
         ],

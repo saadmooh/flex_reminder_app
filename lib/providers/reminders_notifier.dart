@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'; // Add this import for kDebugMode
+import 'package:firebase_messaging/firebase_messaging.dart';
+//import 'package:flutter/foundation.dart'; // Add this import for kDebugMode
 import 'package:flex_reminder/models/reminder.dart';
 import 'package:flex_reminder/models/reminders_response.dart';
 import 'package:flex_reminder/services/api_service.dart';
@@ -62,7 +64,6 @@ class RemindersNotifier extends ChangeNotifier {
   }
 
   void _showSnackBar(String message, Color backgroundColor) {
-    // التحقق من أن التطبيق نشط ومتاح
     if (navigatorKey?.currentContext != null) {
       final scaffoldMessenger =
           ScaffoldMessenger.of(navigatorKey!.currentContext!);
@@ -935,6 +936,362 @@ class RemindersNotifier extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       print('خطأ في مسح التخزين المؤقت للجلسة: $e');
+    }
+  }
+// إضافة هذه الدوال إلى RemindersNotifier class
+
+// ================== دوال معالجة رسائل FCM ==================
+
+  /// معالجة رسائل FCM العامة
+  Future<void> handleFcmMessage(RemoteMessage message) async {
+    try {
+      print('معالجة رسالة FCM: ${message.messageId}');
+
+      // استخراج البيانات من الرسالة
+      final String title =
+          message.data['title'] ?? message.notification?.title ?? '';
+      final String body =
+          message.data['body'] ?? message.notification?.body ?? '';
+
+      if (title.isEmpty || body.isEmpty) {
+        print('بيانات الرسالة غير مكتملة');
+        return;
+      }
+
+      // استخراج ID التذكير من body
+      int? reminderId;
+      try {
+        reminderId = int.parse(body);
+      } catch (e) {
+        print('خطأ في تحويل body إلى رقم: $e');
+        return;
+      }
+
+      if (reminderId == null) {
+        print('معرف التذكير غير صحيح');
+        return;
+      }
+
+      print('معالجة FCM للتذكير $reminderId - نوع العملية: $title');
+
+      // معالجة الرسالة حسب نوع العملية
+      switch (title.toLowerCase()) {
+        case 'update':
+          await handleUpdateFromFcm(reminderId);
+          break;
+
+        case 'reschedule':
+          await handleRescheduleFromFcm(reminderId);
+          break;
+
+        case 'new':
+          await handleNewReminderFromFcm(reminderId);
+          break;
+
+        case 'markas_read':
+          await handleMarkAsReadFromFcm(reminderId);
+          break;
+
+        default:
+          print('نوع العملية غير مدعوم: $title');
+      }
+    } catch (e) {
+      print('خطأ في معالجة رسالة FCM: $e');
+    }
+  }
+
+  /// معالجة تحديث التذكير من FCM
+  Future<void> handleUpdateFromFcm(int reminderId) async {
+    try {
+      _safeShowMessage('معالجة تحديث التذكير من FCM: $reminderId');
+
+      // جلب التذكير المحدث من السيرفر
+      final updatedReminder = await _apiService.getReminderById(reminderId);
+
+      if (updatedReminder.id == reminderId) {
+        // البحث عن التذكير في القوائم المحلية
+        bool foundInRead = _readReminders.any((r) => r.id == reminderId);
+        bool foundInUnread = _unreadReminders.any((r) => r.id == reminderId);
+
+        if (foundInRead || foundInUnread) {
+          // إزالة التذكير القديم من القوائم
+          _readReminders.removeWhere((r) => r.id == reminderId);
+          _unreadReminders.removeWhere((r) => r.id == reminderId);
+
+          // إضافة التذكير المحدث للقائمة المناسبة
+          final targetList =
+              updatedReminder.isOpened == 1 ? _readReminders : _unreadReminders;
+          targetList.add(updatedReminder);
+          targetList.sort((a, b) => b.id.compareTo(a.id));
+
+          // إدارة الإشعارات
+          await _notificationService.cancelReminderNotifications(reminderId);
+          if (updatedReminder.isOpened != 1) {
+            await _scheduleReminderNotifications(updatedReminder);
+          }
+
+          // تحديث التخزين المؤقت
+          await _updateCachedReminder(updatedReminder);
+
+          notifyListeners();
+          print('تم تحديث التذكير $reminderId بنجاح من FCM');
+        } else {
+          print('التذكير $reminderId غير موجود في القوائم المحلية');
+        }
+      } else {
+        print('فشل في جلب التذكير المحدث $reminderId من السيرفر');
+      }
+    } catch (e) {
+      print('خطأ في معالجة تحديث التذكير من FCM: $e');
+    }
+  }
+
+  /// معالجة إعادة جدولة التذكير من FCM
+  Future<void> handleRescheduleFromFcm(int reminderId) async {
+    try {
+      print('معالجة إعادة جدولة التذكير من FCM: $reminderId');
+
+      // جلب التذكير المحدث من السيرفر
+      final updatedReminder = await _apiService.getReminderById(reminderId);
+
+      if (updatedReminder.id == reminderId) {
+        // البحث عن التذكير في القوائم المحلية
+        bool foundInRead = _readReminders.any((r) => r.id == reminderId);
+        bool foundInUnread = _unreadReminders.any((r) => r.id == reminderId);
+
+        if (foundInRead || foundInUnread) {
+          // إزالة التذكير القديم
+          _readReminders.removeWhere((r) => r.id == reminderId);
+          _unreadReminders.removeWhere((r) => r.id == reminderId);
+
+          // إضافة التذكير المحدث للقائمة المناسبة
+          final targetList =
+              updatedReminder.isOpened == 1 ? _readReminders : _unreadReminders;
+          targetList.add(updatedReminder);
+          targetList.sort((a, b) => b.id.compareTo(a.id));
+
+          // إعادة جدولة الإشعارات
+          await _notificationService.cancelReminderNotifications(reminderId);
+          if (updatedReminder.isOpened != 1 &&
+              updatedReminder.nextReminderTime != null &&
+              updatedReminder.nextReminderTime!.isNotEmpty) {
+            await _scheduleReminderNotifications(updatedReminder);
+          }
+
+          // تحديث التخزين المؤقت
+          await _updateCachedReminder(updatedReminder);
+
+          notifyListeners();
+          print('تم إعادة جدولة التذكير $reminderId بنجاح من FCM');
+        } else {
+          print('التذكير $reminderId غير موجود في القوائم المحلية');
+        }
+      } else {
+        print('فشل في جلب التذكير المُعاد جدولته $reminderId من السيرفر');
+      }
+    } catch (e) {
+      print('خطأ في معالجة إعادة جدولة التذكير من FCM: $e');
+    }
+  }
+
+  /// معالجة التذكير الجديد من FCM
+  Future<void> handleNewReminderFromFcm(int reminderId) async {
+    try {
+      print('معالجة تذكير جديد من FCM: $reminderId');
+
+      // التحقق من وجود التذكير في القوائم المحلية
+      bool exists = _readReminders.any((r) => r.id == reminderId) ||
+          _unreadReminders.any((r) => r.id == reminderId);
+
+      if (!exists) {
+        // جلب التذكير الجديد من السيرفر
+        final newReminder = await _apiService.getReminderById(reminderId);
+
+        if (newReminder.id == reminderId) {
+          // إضافة التذكير الجديد للقائمة المناسبة
+          final targetList =
+              newReminder.isOpened == 1 ? _readReminders : _unreadReminders;
+          targetList.add(newReminder);
+          targetList.sort((a, b) => b.id.compareTo(a.id));
+
+          // جدولة الإشعارات للتذكير الجديد
+          if (newReminder.isOpened != 1) {
+            await _scheduleReminderNotifications(newReminder);
+          }
+
+          // تحديث التخزين المؤقت
+          await _updateCachedReminder(newReminder);
+
+          // تحديث العدد الإجمالي
+          _totalReminders++;
+
+          notifyListeners();
+          print('تم إضافة التذكير الجديد $reminderId بنجاح من FCM');
+        } else {
+          print('فشل في جلب التذكير الجديد $reminderId من السيرفر');
+        }
+      } else {
+        print('التذكير $reminderId موجود بالفعل في القوائم المحلية');
+        // تحديث التذكير الموجود
+        await handleUpdateFromFcm(reminderId);
+      }
+    } catch (e) {
+      print('خطأ في معالجة التذكير الجديد من FCM: $e');
+    }
+  }
+
+  /// معالجة وضع علامة "مقروء" من FCM
+  Future<void> handleMarkAsReadFromFcm(int reminderId) async {
+    try {
+      print('معالجة وضع علامة "مقروء" من FCM: $reminderId');
+
+      // البحث عن التذكير في قائمة غير المقروءة
+      final reminderIndex =
+          _unreadReminders.indexWhere((r) => r.id == reminderId);
+
+      if (reminderIndex != -1) {
+        final reminder = _unreadReminders[reminderIndex];
+
+        // نقل التذكير من غير المقروءة إلى المقروءة
+        _unreadReminders.removeAt(reminderIndex);
+
+        final updatedReminder = reminder.copyWith(
+          isOpened: 1,
+          nextReminderTime: null,
+        );
+
+        _readReminders.add(updatedReminder);
+        _readReminders.sort((a, b) => b.id.compareTo(a.id));
+
+        // إلغاء جميع الإشعارات المتعلقة بهذا التذكير
+        await _notificationService.cancelReminderNotifications(reminderId);
+
+        // تحديث التخزين المؤقت
+        await _updateCachedReminder(updatedReminder);
+
+        notifyListeners();
+        print('تم وضع علامة "مقروء" على التذكير $reminderId من FCM');
+      } else {
+        print('التذكير $reminderId غير موجود في قائمة غير المقروءة');
+
+        // محاولة جلب التذكير من السيرفر للتأكد من حالته
+        try {
+          final reminder = await _apiService.getReminderById(reminderId);
+          if (reminder.id == reminderId && reminder.isOpened == 1) {
+            // التحقق من وجوده في قائمة المقروءة
+            final existsInRead = _readReminders.any((r) => r.id == reminderId);
+            if (!existsInRead) {
+              _readReminders.add(reminder);
+              _readReminders.sort((a, b) => b.id.compareTo(a.id));
+              await _updateCachedReminder(reminder);
+              notifyListeners();
+              print('تم إضافة التذكير المقروء $reminderId من السيرفر');
+            }
+          }
+        } catch (e) {
+          print('خطأ في جلب التذكير من السيرفر: $e');
+        }
+      }
+    } catch (e) {
+      print('خطأ في معالجة وضع علامة "مقروء" من FCM: $e');
+    }
+  }
+
+  /// دالة مساعدة لتحديث تذكير من البيانات المُستلمة
+  Future<void> updateReminderFromServerData(
+      Map<String, dynamic> reminderData) async {
+    try {
+      final reminder = Reminder.fromJson(reminderData);
+      final reminderId = reminder.id;
+
+      if (reminderId == 0) {
+        print('معرف التذكير غير صحيح');
+        return;
+      }
+
+      // إزالة التذكير من القوائم المحلية
+      _readReminders.removeWhere((r) => r.id == reminderId);
+      _unreadReminders.removeWhere((r) => r.id == reminderId);
+
+      // إضافة التذكير المحدث للقائمة المناسبة
+      final targetList =
+          reminder.isOpened == 1 ? _readReminders : _unreadReminders;
+      targetList.add(reminder);
+      targetList.sort((a, b) => b.id.compareTo(a.id));
+
+      // إدارة الإشعارات
+      await _notificationService.cancelReminderNotifications(reminderId);
+      if (reminder.isOpened != 1) {
+        await _scheduleReminderNotifications(reminder);
+      }
+
+      // تحديث التخزين المؤقت
+      await _updateCachedReminder(reminder);
+
+      notifyListeners();
+      print('تم تحديث التذكير $reminderId من البيانات المُستلمة');
+    } catch (e) {
+      print('خطأ في تحديث التذكير من البيانات المُستلمة: $e');
+    }
+  }
+
+  /// دالة مساعدة لإضافة تذكير جديد من البيانات المُستلمة
+  Future<void> addNewReminderFromServerData(
+      Map<String, dynamic> reminderData) async {
+    try {
+      final reminder = Reminder.fromJson(reminderData);
+      final reminderId = reminder.id;
+
+      if (reminderId == 0) {
+        print('معرف التذكير غير صحيح');
+        return;
+      }
+
+      // التحقق من عدم وجود التذكير مسبقاً
+      bool exists = _readReminders.any((r) => r.id == reminderId) ||
+          _unreadReminders.any((r) => r.id == reminderId);
+
+      if (!exists) {
+        // إضافة التذكير الجديد للقائمة المناسبة
+        final targetList =
+            reminder.isOpened == 1 ? _readReminders : _unreadReminders;
+        targetList.add(reminder);
+        targetList.sort((a, b) => b.id.compareTo(a.id));
+
+        // جدولة الإشعارات للتذكير الجديد
+        if (reminder.isOpened != 1) {
+          await _scheduleReminderNotifications(reminder);
+        }
+
+        // تحديث التخزين المؤقت
+        await _updateCachedReminder(reminder);
+
+        // تحديث العدد الإجمالي
+        _totalReminders++;
+
+        notifyListeners();
+        print('تم إضافة التذكير الجديد $reminderId من البيانات المُستلمة');
+      } else {
+        print('التذكير $reminderId موجود بالفعل، سيتم تحديثه');
+        await updateReminderFromServerData(reminderData);
+      }
+    } catch (e) {
+      print('خطأ في إضافة التذكير الجديد من البيانات المُستلمة: $e');
+    }
+  }
+
+  /// دالة لمعالجة استجابة السيرفر من getReminderById
+  Future<void> handleGetReminderByIdResponse(
+      Map<String, dynamic> response) async {
+    try {
+      if (response['success'] == true && response['reminder'] != null) {
+        final reminderData = response['reminder'] as Map<String, dynamic>;
+        await updateReminderFromServerData(reminderData);
+      } else {
+        print('فشل في الحصول على التذكير من السيرفر: ${response['message']}');
+      }
+    } catch (e) {
+      print('خطأ في معالجة استجابة getReminderById: $e');
     }
   }
 

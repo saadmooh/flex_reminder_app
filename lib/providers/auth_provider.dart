@@ -53,6 +53,12 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  Future<bool> hasStoredToken() async {
+  // التحقق من وجود token في SharedPreferences أو Secure Storage
+  final prefs = await SharedPreferences.getInstance();
+  final token = prefs.getString('auth_token');
+  return token != null && token.isNotEmpty;
+}
   Future<void> register({
     required String name,
     required String email,

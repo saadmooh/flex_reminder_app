@@ -12,7 +12,6 @@ import 'package:flex_reminder/providers/reminders_notifier.dart';
 
 class ReminderDetailScreen extends StatefulWidget {
   final int reminderId;
-
   const ReminderDetailScreen({super.key, required this.reminderId});
 
   @override
@@ -41,7 +40,8 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
       if (_reminder == null) {
         throw Exception('التذكير غير موجود');
       }
-      await _storeReminderId();
+      // ملاحظة: تم تعليق أو حذف _storeReminderId لتسريع العودة
+      // await _storeReminderId();
     } catch (e) {
       print('خطأ في جلب التذكير: $e');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -57,16 +57,18 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
     }
   }
 
+  // دالة معلقة لتجنب استخدامها عند العودة
   Future<void> _storeReminderId() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('last_reminder_id', widget.reminderId);
-    print('تم حفظ معرف التذكير ${widget.reminderId} في التخزين المحلي');
+    // final prefs = await SharedPreferences.getInstance();
+    // await prefs.setInt('last_reminder_id', widget.reminderId);
+    // print('تم حفظ معرف التذكير ${widget.reminderId} في التخزين المحلي');
   }
 
+  // دالة معلقة لتجنب استخدامها عند العودة
   Future<void> _clearLastReminderId() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('last_reminder_id');
-    print('تم إزالة معرف التذكير الأخير من التخزين المحلي');
+    // final prefs = await SharedPreferences.getInstance();
+    // await prefs.remove('last_reminder_id');
+    // print('تم إزالة معرف التذكير الأخير من التخزين المحلي');
   }
 
   Future<void> _refreshAllReminders() async {
@@ -90,7 +92,6 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
         _reminder!.importance!,
       );
       if (response['success'] == true) {
-        // تحديث التذكير في Notifier
         final updatedReminder = Reminder.fromJson(response['post']);
         await remindersNotifier.updateSingleReminder(updatedReminder.id);
         setState(() => _reminder = updatedReminder);
@@ -121,7 +122,6 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
   @override
   Widget build(BuildContext context) {
     localizations = AppLocalizations.of(context)!;
-
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
@@ -134,7 +134,6 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
         body: const Center(child: CircularProgressIndicator()),
       );
     }
-
     if (_reminder == null) {
       return Scaffold(
         appBar: AppBar(
@@ -149,13 +148,16 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                 style: const TextStyle(color: Colors.black))),
       );
     }
-
     return WillPopScope(
+      // تعديل onWillPop لتسريع العودة
       onWillPop: () async {
-        await _clearLastReminderId();
-        await _refreshAllReminders();
-        Navigator.pop(context, {'type': 'update', 'id': _reminder!.id});
-        return false;
+        // إزالة أو تعليق العمليات الإضافية
+        // await _clearLastReminderId();
+        // Navigator.pop(context, {'type': 'update', 'id': _reminder!.id});
+        // return false; // منع السلوك الافتراضي
+
+        // السماح بسلوك زر الرجوع القياسي
+        return true;
       },
       child: Scaffold(
         backgroundColor: Colors.white,
@@ -169,7 +171,6 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
           elevation: 0,
           iconTheme: const IconThemeData(color: Colors.black),
           actions: [
-            // عرض زر Edit أو Reset بناءً على حالة isOpened
             _reminder!.isOpened == 1
                 ? IconButton(
                     icon: const Icon(Icons.refresh, color: Colors.black),
@@ -191,10 +192,10 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                       if (updatedReminder != null &&
                           updatedReminder is Reminder) {
                         setState(() => _reminder = updatedReminder);
-                        await _clearLastReminderId();
-                        await _refreshAllReminders();
-                        Navigator.pop(
-                            context, {'type': 'update', 'id': _reminder!.id});
+                        // ملاحظة: تم تعليق العمليات الإضافية عند العودة من التحرير
+                        // await _clearLastReminderId();
+                        // await _refreshAllReminders();
+                        // Navigator.pop(context, {'type': 'update', 'id': _reminder!.id});
                       }
                     },
                   ),
@@ -243,16 +244,16 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                       children: [
                         if (_reminder!.category != null &&
                             _reminder!.category!.isNotEmpty)
-                          _buildTag(_reminder!.category!,
-                              Colors.lightBlue[100]!, Colors.blue),
+                          _buildTag(_reminder!.category!, Colors.lightBlue[100]!,
+                              Colors.blue),
                         if (_reminder!.complexity != null &&
                             _reminder!.complexity!.isNotEmpty)
-                          _buildTag(_reminder!.complexity!, Colors.orange[100]!,
-                              Colors.orange),
+                          _buildTag(_reminder!.complexity!,
+                              Colors.orange[100]!, Colors.orange),
                         if (_reminder!.domain != null &&
                             _reminder!.domain!.isNotEmpty)
-                          _buildTag(_reminder!.domain!, Colors.green[100]!,
-                              Colors.green),
+                          _buildTag(
+                              _reminder!.domain!, Colors.green[100]!, Colors.green),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -391,11 +392,12 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                       await ApiService().deleteReminder(_reminder!.id);
                       await NotificationService()
                           .cancelReminderNotifications(_reminder!.id);
-                      await _clearLastReminderId();
-                      await _refreshAllReminders();
+                      // ملاحظة: تم تعليق العمليات الإضافية عند الحذف
+                      // await _clearLastReminderId();
+                      // await _refreshAllReminders();
                       Navigator.pop(context);
-                      Navigator.pop(
-                          context, {'type': 'delete', 'id': _reminder!.id});
+                      // ملاحظة: تم تعليق إرسال النتيجة عند الحذف
+                      // Navigator.pop(context, {'type': 'delete', 'id': _reminder!.id});
                     } else {
                       throw Exception('معرف التذكير مفقود أو غير صالح');
                     }
@@ -422,8 +424,13 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-          color: backgroundColor, borderRadius: BorderRadius.circular(16)),
-      child: Text(text, style: TextStyle(color: textColor, fontSize: 12)),
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(color: textColor, fontSize: 12),
+      ),
     );
   }
 }

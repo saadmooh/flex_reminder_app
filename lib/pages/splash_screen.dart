@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flex_reminder/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:flex_reminder/providers/auth_provider.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -37,12 +38,49 @@ class _SplashScreenState extends State<SplashScreen> {
     });
   }
 
+  Future<bool> _checkInternetConnection() async {
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      return connectivityResult != ConnectivityResult.none;
+    } catch (e) {
+      print('Error checking internet connection: $e');
+      return false;
+    }
+  }
+
   Future<void> _navigateBasedOnAuth() async {
     try {
       await Future.delayed(
           const Duration(seconds: 2)); // تأخير لعرض شاشة Splash
+      
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      
+      // فحص الاتصال بالإنترنت
+      bool hasInternet = await _checkInternetConnection();
+      
+      if (!hasInternet) {
+        // عند عدم وجود إنترنت، فحص الـ token المخزن محلياً فقط
+        print('No internet connection, checking local token...');
+        
+        // التحقق من وجود token محفوظ محلياً
+        bool hasLocalToken = await authProvider.hasStoredToken();
+        
+        if (hasLocalToken) {
+          print('Local token found, navigating to reminders...');
+          // إذا كان هناك token محفوظ، انتقل إلى reminders مباشرة
+          _navigateToRoute('/reminders');
+          return;
+        } else {
+          print('No local token found, navigating to auth...');
+          // إذا لم يكن هناك token، انتقل إلى صفحة المصادقة
+          _navigateToRoute('/auth');
+          return;
+        }
+      }
 
+      // إذا كان هناك إنترنت، تنفيذ المنطق العادي
+      print('Internet connection available, proceeding with normal flow...');
+      
       // الانتظار حتى اكتمال عملية المصادقة
       while (authProvider.isLoading) {
         await Future.delayed(const Duration(milliseconds: 100));
@@ -67,13 +105,26 @@ class _SplashScreenState extends State<SplashScreen> {
       }
     } catch (e) {
       print('Error in _navigateBasedOnAuth: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(localizations.error(e.toString())),
-          backgroundColor: Colors.red,
-        ),
-      );
-      _navigateToRoute('/auth');
+      
+      // في حالة حدوث خطأ، تحقق من وجود token محلي كخطة احتياطية
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      bool hasLocalToken = await authProvider.hasStoredToken();
+      
+      if (hasLocalToken) {
+        print('Error occurred but local token found, navigating to reminders...');
+        _navigateToRoute('/reminders');
+      } else {
+        print('Error occurred and no local token, navigating to auth...');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(localizations.error(e.toString())),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        _navigateToRoute('/auth');
+      }
     }
   }
 

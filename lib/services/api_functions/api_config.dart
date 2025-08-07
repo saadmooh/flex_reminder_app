@@ -35,6 +35,12 @@ class ApiConfig {
       );
 
       final data = jsonDecode(response.body);
+      if (data['user'] != null && data['user']['id'] != null) {
+        await _storage.write(
+            key: 'user_id', value: data['user']['id'].toString());
+        print('User ID saved successfully');
+      }
+
       print('checkTokenValidity:$data');
       return response.statusCode == 200 && data['valid'] == true;
     } catch (e) {

@@ -85,20 +85,25 @@ class NotificationService {
   }
 
   @pragma("vm:entry-point")
-  static Future<void> onNotificationDisplayed(
-      ReceivedNotification receivedNotification) async {
-    print(
-        '📱 تم عرض الإشعار: ${receivedNotification.title} في ${DateTime.now()}');
+  @pragma("vm:entry-point")
+static Future<void> onNotificationDisplayed(
+    ReceivedNotification receivedNotification) async {
+  print(
+      '📱 تم عرض الإشعار: ${receivedNotification.title} في ${DateTime.now()}');
+   
+  // --- تعديل هنا ---
+  // استخدم _instance للوصول إلى الدالة العادية
+  _instance._showSnackBar('🔔 حان وقت التذكير: ${receivedNotification.title}', Colors.blue); 
+  // ------------------
 
-    final payload = receivedNotification.payload ?? {};
-    final bool isCheckNotification = payload['isCheckNotification'] == 'true';
-
-    if (!isCheckNotification) {
-      print('🔔 إشعار تذكير رئيسي: ${receivedNotification.title}');
-    } else {
-      print('⚠️ إشعار فحص غير متوقع - سيتم تجاهله');
-    }
+  final payload = receivedNotification.payload ?? {};
+  final bool isCheckNotification = payload['isCheckNotification'] == 'true';
+  if (!isCheckNotification) {
+    print('🔔 إشعار تذكير رئيسي: ${receivedNotification.title}');
+  } else {
+    print('⚠️ إشعار فحص غير متوقع - سيتم تجاهله');
   }
+}
 
   @pragma("vm:entry-point")
   static Future<void> onDismissActionReceived(

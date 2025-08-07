@@ -1,27 +1,30 @@
 import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart'; // للتحقق من منصة الويب
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:googleapis_auth/auth_io.dart' as auth;
-import 'package:flex_reminder/providers/reminders_notifier.dart';
 import 'package:flex_reminder/services/api_functions/api_config.dart';
 import 'package:flex_reminder/services/notification_service.dart';
 import 'package:flex_reminder/globals.dart';
-import 'package:flex_reminder/services/api_service.dart';
-
+import 'package:flex_reminder/providers/reminders_notifier.dart';
 
 class FcmService {
   static const String API_BASE_URL = 'https://flexreminder.com/api';
   static const String API_PASSWORD = 'api_password_app';
-  final ApiService _apiService = ApiService();
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final _storage = const FlutterSecureStorage();
   final NotificationService _notificationService = NotificationService();
+  // متغيرات تتبع حالة التطبيق والرسائل
+  static bool _isAppInForeground = true;
+  static final Set<String> _processedMessages = <String>{};
+  static const int _maxProcessedMessages = 100;
+  static final Map<int, DateTime> _lastProcessedTime = <int, DateTime>{};
+  static const Duration _processDelay = Duration(seconds: 2);
 
-  static void _showSnackBar(String message, Color backgroundColor) {
+  void _showSnackBar(String message, Color backgroundColor) {
     // التحقق من أن التطبيق نشط ومتاح
     if (navigatorKey.currentContext != null) {
       final scaffoldMessenger =
@@ -54,7 +57,7 @@ class FcmService {
     if (kDebugMode) {
       print('FCM Message: $message');
     }
-    
+
     // محاولة عرض SnackBar مع معالجة الأخطاء
     try {
       _showSnackBar(message, color ?? Colors.blue);
@@ -63,17 +66,234 @@ class FcmService {
     }
   }
 
-  // دالة للتحقق من حالة التطبيق قبل عرض الرسائل (Static version)
-  static void _safeShowMessageStatic(String message, {Color? color}) {
-    if (kDebugMode) {
-      print('FCM Message: $message');
+  // دالة للتحقق من تكرار الرسالة
+  static bool _isDuplicateMessage(String messageId) {
+    if (_processedMessages.contains(messageId)) {
+      print('رسالة مكررة تم تجاهلها: $messageId');
+      return true;
     }
-    
-    // محاولة عرض SnackBar مع معالجة الأخطاء
+
+    _processedMessages.add(messageId);
+
+    if (_processedMessages.length > _maxProcessedMessages) {
+      final oldMessages = _processedMessages
+          .take(_processedMessages.length - _maxProcessedMessages);
+      _processedMessages.removeAll(oldMessages);
+    }
+
+    return false;
+  }
+
+  // دالة للتحقق من التأخير بين معالجة التذكيرات
+  static bool _shouldProcessReminder(int reminderId) {
+    final now = DateTime.now();
+    final lastProcessed = _lastProcessedTime[reminderId];
+
+    if (lastProcessed != null &&
+        now.difference(lastProcessed) < _processDelay) {
+      print('تم تأخير معالجة التذكير $reminderId لتجنب التكرار');
+      return false;
+    }
+
+    _lastProcessedTime[reminderId] = now;
+
+    _lastProcessedTime.removeWhere(
+        (key, value) => now.difference(value) > const Duration(minutes: 5));
+
+    return true;
+  }
+
+  // دالة معالجة الرسائل الموحدة
+  static Future<void> _processMessage(RemoteMessage message,
+      {required bool isBackground}) async {
     try {
-      _showSnackBar(message, color ?? Colors.blue);
+      final String title =
+          message.data['title'] ?? message.notification?.title ?? '';
+      final String body =
+          message.data['body'] ?? message.notification?.body ?? '';
+      final Map<String, dynamic> data = Map<String, dynamic>.from(message.data);
+
+      print('Title: $title');
+      print('Body: $body');
+      print('Is Background: $isBackground');
+
+      if (title.isEmpty || body.isEmpty) {
+        print('بيانات الرسالة غير مكتملة');
+        if (!isBackground) {
+          final service = FcmService();
+          service._safeShowMessage('بيانات الرسالة غير مكتملة',
+              color: Colors.orange);
+        }
+        return;
+      }
+
+      // محاولة استخراج ID التذكير من body
+      int? reminderId;
+      try {
+        reminderId = int.parse(body.trim());
+      } catch (e) {
+        // إذا لم يكن body رقماً، قد تكون رسالة إشعار عادية
+        print('body ليس رقماً، سيتم التعامل معه كإشعار عادي: $body');
+        await _handleGeneralNotification(title, body, data, isBackground);
+        return;
+      }
+
+      if (reminderId == null || reminderId <= 0) {
+        print('معرف التذكير غير صحيح: $reminderId');
+        return;
+      }
+
+      if (!_shouldProcessReminder(reminderId)) {
+        return;
+      }
+
+      print('=== بدء معالجة التذكير $reminderId - العملية: $title ===');
+
+      final remindersNotifier = RemindersNotifier();
+      await remindersNotifier.initialize();
+
+      bool operationSuccess = false;
+      String successMessage = '';
+      String errorMessage = '';
+
+      switch (title.toLowerCase().trim()) {
+        case 'reschedule':
+          try {
+            await remindersNotifier.handleRescheduleFromFcm(reminderId);
+            operationSuccess = true;
+            successMessage = 'تم إعادة جدولة التذكير رقم $reminderId';
+          } catch (e) {
+            errorMessage = 'فشل في إعادة جدولة التذكير رقم $reminderId: $e';
+          }
+          break;
+
+        case 'update':
+          try {
+            await remindersNotifier.handleUpdateFromFcm(reminderId);
+            operationSuccess = true;
+            successMessage = 'تم تحديث التذكير رقم $reminderId';
+          } catch (e) {
+            errorMessage = 'فشل في تحديث التذكير رقم $reminderId: $e';
+          }
+          break;
+
+        case 'new':
+          try {
+            await remindersNotifier.handleNewReminderFromFcm(reminderId);
+            operationSuccess = true;
+            successMessage = 'تم إضافة تذكير جديد رقم $reminderId';
+          } catch (e) {
+            errorMessage = 'فشل في إضافة التذكير الجديد رقم $reminderId: $e';
+          }
+          break;
+
+        case 'markas_read':
+        case 'mark_as_read':
+          try {
+            await remindersNotifier.handleMarkAsReadFromFcm(reminderId);
+            operationSuccess = true;
+            successMessage = 'تم وضع علامة "مقروء" على التذكير رقم $reminderId';
+          } catch (e) {
+            errorMessage =
+                'فشل في وضع علامة "مقروء" على التذكير رقم $reminderId: $e';
+          }
+          break;
+
+        case 'delete':
+          try {
+            await remindersNotifier.deleteReminder(reminderId);
+            operationSuccess = true;
+            successMessage = 'تم حذف التذكير رقم $reminderId';
+          } catch (e) {
+            errorMessage = 'فشل في حذف التذكير رقم $reminderId: $e';
+          }
+          break;
+
+        default:
+          print('نوع العملية غير مدعوم: $title');
+          await _handleGeneralNotification(title, body, data, isBackground);
+          return;
+      }
+
+      if (operationSuccess) {
+        print('✅ $successMessage');
+
+        if (!isBackground) {
+          final service = FcmService();
+          service._safeShowMessage(successMessage, color: Colors.green);
+        }
+
+        if (isBackground) {
+          await _sendGenericNotification(
+            'تم بنجاح',
+            successMessage,
+            data,
+          );
+        }
+      } else {
+        print('❌ $errorMessage');
+
+        if (!isBackground) {
+          final service = FcmService();
+          service._safeShowMessage(errorMessage, color: Colors.red);
+        }
+
+        if (isBackground) {
+          await _sendGenericNotification(
+            'خطأ في العملية',
+            errorMessage,
+            data,
+          );
+        }
+      }
     } catch (e) {
-      print('خطأ في عرض الرسالة: $e');
+      print('خطأ عام في معالجة الرسالة: $e');
+
+      if (!isBackground) {
+        final service = FcmService();
+        service._safeShowMessage('خطأ في معالجة الرسالة: $e',
+            color: Colors.red);
+      } else {
+        await _sendGenericNotification(
+          'خطأ في المعالجة',
+          'حدث خطأ أثناء معالجة الرسالة',
+          message.data,
+        );
+      }
+    }
+  }
+
+  // معالجة الإشعارات العامة (غير المتعلقة بالتذكيرات)
+  static Future<void> _handleGeneralNotification(String title, String body,
+      Map<String, dynamic> data, bool isBackground) async {
+    print('=== معالجة إشعار عام ===');
+    print('Title: $title');
+    print('Body: $body');
+    print('Is Background: $isBackground');
+
+    if (isBackground) {
+      await _sendGenericNotification(title, body, data);
+    } else {
+      final service = FcmService();
+      service._safeShowMessage('$title: $body', color: Colors.blue);
+    }
+  }
+
+  // دالة لإرسال إشعار محلي عام
+  static Future<void> _sendGenericNotification(
+      String title, String body, Map<String, dynamic> data) async {
+    try {
+      print('📢 إرسال إشعار محلي: $title - $body');
+
+      final notificationService = NotificationService();
+      await notificationService.scheduleNotification(
+        title: title,
+        body: body,
+        channelKey: 'scheduled_channel',
+        payload: data.cast<String, String>(),
+      );
+    } catch (e) {
+      print('❌ خطأ في إرسال الإشعار المحلي: $e');
     }
   }
 
@@ -90,7 +310,8 @@ class FcmService {
   Future<Map<String, dynamic>> init() async {
     try {
       // طلب الأذونات أولاً
-      NotificationSettings settings = await _firebaseMessaging.requestPermission(
+      NotificationSettings settings =
+          await _firebaseMessaging.requestPermission(
         alert: true,
         announcement: false,
         badge: true,
@@ -102,7 +323,8 @@ class FcmService {
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized) {
         print('تم منح أذونات الإشعارات');
-      } else if (settings.authorizationStatus == AuthorizationStatus.provisional) {
+      } else if (settings.authorizationStatus ==
+          AuthorizationStatus.provisional) {
         print('تم منح أذونات مؤقتة للإشعارات');
       } else {
         print('لم يتم منح أذونات الإشعارات');
@@ -135,14 +357,20 @@ class FcmService {
           await subscribeToTopic('user_$userId');
         } else {
           print('لم يتم العثور على user_id في التخزين الآمن');
-          _safeShowMessage('لم يتم العثور على معرف المستخدم', color: Colors.orange);
+          _safeShowMessage('لم يتم العثور على معرف المستخدم',
+              color: Colors.orange);
         }
       } else {
         print('الاشتراك في المواضيع غير مدعوم في منصة الويب');
       }
 
-      // إعداد معالجات الرسائل
+      // إعداد معالجات الرسائل المحسنة
       await _setupMessageHandlers();
+
+      // إعداد مراقب دورة حياة التطبيق
+      _setupAppLifecycleListener();
+
+      print('✅ تم تهيئة FCM المحسن بنجاح');
 
       return {
         'fcmToken': fcmToken,
@@ -154,6 +382,56 @@ class FcmService {
         'fcmToken': null,
         'message': 'فشل في تهيئة FCM: $e',
       };
+    }
+  }
+
+  // دالة لمعالجة منطق التنقل عند فتح التطبيق من الإشعار
+  void _handleNavigationLogic(RemoteMessage message, String userTopic) {
+    try {
+      // منطق التنقل حسب نوع الرسالة
+      final String title =
+          message.data['title'] ?? message.notification?.title ?? '';
+      final String body =
+          message.data['body'] ?? message.notification?.body ?? '';
+
+      print('=== معالجة منطق التنقل ===');
+      print('نوع العملية: $title');
+      print('معرف التذكير: $body');
+      print('الموضوع: $userTopic');
+
+      // يمكن إضافة منطق التنقل هنا حسب نوع الرسالة
+      switch (title.toLowerCase().trim()) {
+        case 'reschedule':
+          // التنقل إلى صفحة إعادة الجدولة
+          print('🔄 التنقل إلى صفحة إعادة الجدولة');
+          break;
+        case 'update':
+          // التنقل إلى صفحة التحديث
+          print('✏️ التنقل إلى صفحة تحديث التذكير');
+          break;
+        case 'new':
+          // التنقل إلى صفحة التذكيرات الجديدة
+          print('🆕 التنقل إلى صفحة التذكيرات الجديدة');
+          break;
+        case 'markas_read':
+        case 'mark_as_read':
+          // التنقل إلى صفحة التذكيرات المقروءة
+          print('✅ التنقل إلى صفحة التذكيرات المقروءة');
+          break;
+        case 'delete':
+          // التنقل إلى الصفحة الرئيسية أو صفحة التذكيرات
+          print('🗑️ التنقل إلى الصفحة الرئيسية');
+          break;
+        default:
+          // التنقل العام للإشعارات غير المتعلقة بالتذكيرات
+          print('📱 التنقل العام للإشعار');
+      }
+
+      // يمكن استخدام Navigator.pushNamed أو أي نظام تنقل آخر هنا
+      // مثال:
+      // Navigator.of(navigatorKey.currentContext!).pushNamed('/reminders');
+    } catch (e) {
+      print('❌ خطأ في معالجة منطق التنقل: $e');
     }
   }
 
@@ -171,11 +449,14 @@ class FcmService {
         'assets/flex-reminders-app-7e58d9767343.json',
       );
 
-      final accountCredentials = auth.ServiceAccountCredentials.fromJson(jsonString);
+      final accountCredentials =
+          auth.ServiceAccountCredentials.fromJson(jsonString);
       final scopes = ['https://www.googleapis.com/auth/firebase.messaging'];
-      final client = await auth.clientViaServiceAccount(accountCredentials, scopes);
-      _safeShowMessage(client.credentials.accessToken.data, color: Colors.green);
-     // print('تم الحصول على Access Token: ${client.credentials.accessToken.data}')
+      final client =
+          await auth.clientViaServiceAccount(accountCredentials, scopes);
+      _safeShowMessage(client.credentials.accessToken.data,
+          color: Colors.green);
+      // print('تم الحصول على Access Token: ${client.credentials.accessToken.data}')
       return client.credentials.accessToken.data;
     } catch (e) {
       print('خطأ في الحصول على Access Token: $e');
@@ -189,238 +470,153 @@ class FcmService {
     }
   }
 
+  // إعداد معالجات الرسائل المحسنة (الاسم القديم للتوافق)
+  Future<void> _setupEnhancedMessageHandlers() async {
+    await _setupMessageHandlers();
+  }
+
   // إعداد معالجات الرسائل
- Future<void> _setupMessageHandlers() async {
-  final userId = await _getUserId();
-  final userTopic = userId != null ? 'user_$userId' : 'unknown_user';
-  
-  // 1. معالج الرسائل عند فتح التطبيق (Foreground)
-  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-    print('تم استلام رسالة أثناء تشغيل التطبيق: ${message.messageId}');
-    print('الموضوع المستهدف: $userTopic');
-    print('بيانات الرسالة: ${message.data}');
-    
-    // التحقق من أن الرسالة مرسلة للموضوع الصحيح
-    if (message.data.containsKey('topic') && message.data['topic'] == userTopic) {
-      print('تم استلام رسالة من الموضوع الصحيح: ${message.data['topic']}');
-    }
-    
-    // معالجة الرسالة في المقدمة (نفس منطق الخلفية)
-    _handleForegroundMessage(message);
-    
-    // إظهار رسالة تأكيد للمستخدم
-    _safeShowMessage('تم استلام رسالة جديدة من الموضوع: $userTopic', color: Colors.green);
-  });
+  Future<void> _setupMessageHandlers() async {
+    String? userId = await _storage.read(key: 'user_id');
+    final userTopic = userId != null ? 'user_$userId' : 'unknown_user';
 
-  // 2. معالج الرسائل عند النقر على الإشعار
-  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-    print('تم فتح التطبيق من خلال الإشعار: ${message.messageId}');
-    print('الموضوع: $userTopic');
-    print('بيانات الرسالة: ${message.data}');
-    
-    // معالجة الرسالة عند فتح التطبيق
-    _handleOpenedAppMessage(message);
-  });
+    // معالج الرسائل عند فتح التطبيق
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      print('تم استلام رسالة أثناء تشغيل التطبيق: ${message.messageId}');
+      print('الموضوع المستهدف: $userTopic');
+      print('بيانات الرسالة: ${message.data}');
 
-  // 3. معالجة الرسائل المؤجلة (عند فتح التطبيق لأول مرة)
-  RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
-  if (initialMessage != null) {
-    print('تم فتح التطبيق من رسالة مؤجلة: ${initialMessage.messageId}');
-    _handleOpenedAppMessage(initialMessage);
-  }
-  
-  // ملاحظة: Background Handler يتم تسجيله في main.dart
-}
-
-// معالج الرسائل في المقدمة
-void _handleForegroundMessage(RemoteMessage message) {
-  // عرض الإشعار داخل التطبيق
- // معالجة البيانات (نفس منطق الخلفية)
-  _processMessageData(message);
-}
-
-// معالج فتح التطبيق من الإشعار
-void _handleOpenedAppMessage(RemoteMessage message) {
-  // معالجة البيانات
-  _processMessageData(message);
-  
-  // يمكنك إضافة منطق التنقل هنا
-  if (message.data.containsKey('route')) {
-    // Navigator.pushNamed(navigatorKey.currentContext!, message.data['route']);
-  }
-}
-
-// معالج البيانات الموحد
-void _processMessageData(RemoteMessage message) {
-  try {
-    final String title = message.data['title'] ?? message.notification?.title ?? '';
-    final String body = message.data['body'] ?? message.notification?.body ?? '';
-    
-    if (title.isEmpty || body.isEmpty) {
-      print('بيانات الرسالة غير مكتملة');
-      return;
-    }
-    
-    int? reminderId;
-    try {
-      reminderId = int.parse(body);
-    } catch (e) {
-      print('خطأ في تحويل body إلى رقم: $e');
-      return;
-    }
-    
-    if (reminderId == null) {
-      print('معرف التذكير غير صحيح');
-      return;
-    }
-    
-    _safeShowMessage('Foreground: معالجة العملية $title للتذكير $reminderId');
-    
-    // إنشاء instance من RemindersNotifier
-    final remindersNotifier = RemindersNotifier();
-    
-    // معالجة الرسالة حسب النوع
-    switch (title.toLowerCase()) {
-      case 'reschedule':
-        _handleReschedule(remindersNotifier, reminderId);
-        break;
-      case 'update':
-        _handleUpdate(remindersNotifier, reminderId);
-        break;
-      case 'new':
-        _handleNew(remindersNotifier, reminderId);
-        break;
-      case 'delete':
-        _handleDelete(remindersNotifier, reminderId);
-        break;
-      case 'markasread':
-        _handleMarkAsRead(remindersNotifier, reminderId);
-        break;
-      default:
-        print('نوع العملية غير مدعوم: $title');
-    }
-  } catch (e) {
-    print('خطأ في معالجة البيانات: $e');
-  }
-}
-  // معالجة عملية إعادة الجدولة
-static Future<void> _handleReschedule(RemindersNotifier notifier,
-      int reminderId) async {
-    try {
-      print('معالجة إعادة جدولة التذكير: $reminderId');
-
-      // تحديث التذكير من السيرفر
-      await notifier.updateSingleReminder(reminderId);
-
-      // إظهار رسالة للمستخدم
-      _safeShowMessageStatic('تم إعادة جدولة التذكير - تم تحديث موعد التذكير رقم $reminderId', color: Colors.green);
-
-      print('تم إعادة جدولة التذكير $reminderId بنجاح');
-    } catch (e) {
-      print('خطأ في معالجة إعادة الجدولة: $e');
-
-      // إظهار رسالة خطأ
-      _safeShowMessageStatic('خطأ في إعادة الجدولة - فشل في إعادة جدولة التذكير رقم $reminderId', color: Colors.red);
-    }
-  }
-
-  // معالجة عملية التحديث
-  // معالجة عملية التحديث
-static Future<void> _handleUpdate(RemindersNotifier notifier, int reminderId) async {
-
-    print('معالجة تحديث التذكير: $reminderId');
-    
-    // إنشاء instance جديد من ApiService داخل الدالة الثابتة
-    final apiService = ApiService();
-    
-    // جلب التذكير المحدث من السيرفر
-    final updatedReminder = await apiService.getReminderById(reminderId);
-    _safeShowMessageStatic(updatedReminder.id.toString());
-    
-    // تحديث التذكير من السيرفر
-    await notifier.updateSingleReminder(reminderId);
-
-    // إظهار رسالة للمستخدم
-    _safeShowMessageStatic('تم تحديث التذكير - تم تحديث التذكير رقم $reminderId', color: Colors.green);
-
-    print('تم تحديث التذكير $reminderId بنجاح');
- 
-}
-  // معالجة التذكير الجديد
-static Future<void> _handleNew(RemindersNotifier notifier, int reminderId) async {
-    try {
-      print('معالجة تذكير جديد: $reminderId');
-
-      // تحديث التذكير من السيرفر (سيتم إضافته للقائمة المناسبة)
-      await notifier.updateSingleReminder(reminderId);
-
-      // جلب التذكير لعرض العنوان في الإشعار
-      final reminder = await notifier.getReminderById(reminderId);
-
-      if (reminder != null) {
-        // إظهار رسالة للمستخدم
-        _safeShowMessageStatic('تذكير جديد - ${reminder.title.isNotEmpty ? reminder.title : 'تم إضافة تذكير جديد'}', color: Colors.blue);
-
-        print('تم معالجة التذكير الجديد $reminderId بنجاح');
-      } else {
-        print('فشل في جلب التذكير الجديد $reminderId');
-
-        // إظهار رسالة عامة
-        _safeShowMessageStatic('تذكير جديد - تم إضافة تذكير جديد رقم $reminderId', color: Colors.blue);
+      // التحقق من أن الرسالة مرسلة للموضوع الصحيح
+      if (message.data.containsKey('topic') &&
+          message.data['topic'] == userTopic) {
+        print('تم استلام رسالة من الموضوع الصحيح: ${message.data['topic']}');
       }
-    } catch (e) {
-      print('خطأ في معالجة التذكير الجديد: $e');
 
-      // إظهار رسالة خطأ
-      _safeShowMessageStatic('خطأ في التذكير الجديد - فشل في معالجة التذكير الجديد رقم $reminderId', color: Colors.red);
+      // معالجة الرسالة باستخدام النظام المحسن
+      _handleForegroundMessage(message);
+
+      // إظهار رسالة تأكيد للمستخدم (عرض الموضوع أو محتوى الرسالة)
+      final topicMessage =
+          message.data['topic'] ?? 'تم استلام رسالة من الموضوع: $userTopic';
+      _safeShowMessage(topicMessage, color: Colors.green);
+    });
+
+    // معالج الرسائل عند النقر على الإشعار
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      print('تم فتح التطبيق من خلال الإشعار: ${message.messageId}');
+      print('الموضوع: $userTopic');
+      print('بيانات الرسالة: ${message.data}');
+
+      // معالجة الرسالة باستخدام النظام المحسن
+      _handleMessageOpenedApp(message);
+
+      // يمكنك إضافة منطق التنقل هنا حسب نوع الرسالة
+      _handleNavigationLogic(message, userTopic);
+    });
+
+    // معالج الرسائل في الخلفية
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+    // معالجة الرسالة الأولية عند فتح التطبيق من إشعار منهي
+    RemoteMessage? initialMessage =
+        await _firebaseMessaging.getInitialMessage();
+    if (initialMessage != null) {
+      print('📬 تم فتح التطبيق من إشعار منهي');
+      await _handleMessageOpenedApp(initialMessage);
+      _handleNavigationLogic(initialMessage, userTopic);
+    }
+
+    // مراقبة تحديث Token
+    _firebaseMessaging.onTokenRefresh.listen((String newToken) {
+      print('🔄 تم تحديث FCM Token');
+      _storage.write(key: 'fcmToken', value: newToken);
+      sendFcmTokenToBackend();
+    });
+
+    print('✅ تم تعيين معالجات الرسائل');
+  }
+
+  // دالة معالجة الرسائل في الخلفية
+  static Future<void> _firebaseMessagingBackgroundHandler(
+      RemoteMessage message) async {
+    print('=== معالجة رسالة خلفية ===');
+    print('Message ID: ${message.messageId}');
+    print('Data: ${message.data}');
+    print('Notification: ${message.notification?.toMap()}');
+
+    _isAppInForeground = false;
+
+    if (message.messageId != null && _isDuplicateMessage(message.messageId!)) {
+      return;
+    }
+
+    try {
+      await _processMessage(message, isBackground: true);
+    } catch (e) {
+      print('خطأ في معالجة الرسالة في الخلفية: $e');
+      await _sendGenericNotification(
+        message.notification?.title ?? 'إشعار جديد',
+        message.notification?.body ?? 'تم استلام بيانات جديدة',
+        message.data,
+      );
     }
   }
 
-  // معالجة حذف التذكير
-static Future<void> _handleDelete(RemindersNotifier notifier, int reminderId) async {
+  // دالة معالجة الرسائل في المقدمة
+  Future<void> _handleForegroundMessage(RemoteMessage message) async {
+    print('=== معالجة رسالة مقدمة ===');
+    print('Message ID: ${message.messageId}');
+    print('Data: ${message.data}');
+    print('Notification: ${message.notification?.toMap()}');
+
+    _isAppInForeground = true;
+
+    if (message.messageId != null && _isDuplicateMessage(message.messageId!)) {
+      return;
+    }
+
     try {
-      print('معالجة حذف التذكير: $reminderId');
-
-      // حذف التذكير من القوائم المحلية والتخزين المؤقت
-      await notifier.deleteReminderLocally(reminderId);
-
-      // إظهار رسالة للمستخدم
-      _safeShowMessageStatic('تم حذف التذكير - تم حذف التذكير رقم $reminderId', color: Colors.orange);
-
-      print('تم حذف التذكير $reminderId بنجاح');
+      await _processMessage(message, isBackground: false);
     } catch (e) {
-      print('خطأ في معالجة حذف التذكير: $e');
-
-      // إظهار رسالة خطأ
-      _safeShowMessageStatic('خطأ في الحذف - فشل في حذف التذكير رقم $reminderId', color: Colors.red);
+      print('خطأ في معالجة الرسالة في المقدمة: $e');
+      _safeShowMessage('خطأ في معالجة الرسالة', color: Colors.red);
     }
   }
 
-  // معالجة تحديد التذكير كمقروء
-  static Future<void> _handleMarkAsRead(RemindersNotifier notifier, int reminderId) async {
-    try {
-      print('معالجة تحديد التذكير كمقروء: $reminderId');
+  // دالة معالجة النقر على الإشعار
+  Future<void> _handleMessageOpenedApp(RemoteMessage message) async {
+    print('=== تم فتح التطبيق من الإشعار ===');
+    print('Message ID: ${message.messageId}');
 
-      // تحديث التذكير من السيرفر (سيتم نقله للقائمة المقروءة)
-      await notifier.updateSingleReminder(reminderId);
+    _isAppInForeground = true;
 
-      // إظهار رسالة للمستخدم
-      _safeShowMessageStatic('تم تحديد التذكير كمقروء - تم تحديد التذكير رقم $reminderId كمقروء', color: Colors.green);
-
-      print('تم تحديد التذكير $reminderId كمقروء بنجاح');
-    } catch (e) {
-      print('خطأ في معالجة تحديد التذكير كمقروء: $e');
-
-      // إظهار رسالة خطأ
-      _safeShowMessageStatic('خطأ في التحديد كمقروء - فشل في تحديد التذكير رقم $reminderId كمقروء', color: Colors.red);
+    if (message.messageId != null &&
+        _isDuplicateMessage('opened_${message.messageId!}')) {
+      return;
     }
+
+    try {
+      await _processMessage(message, isBackground: false);
+      _safeShowMessage('تم فتح التطبيق من الإشعار', color: Colors.blue);
+    } catch (e) {
+      print('خطأ في معالجة فتح التطبيق من الإشعار: $e');
+      _safeShowMessage('خطأ في معالجة الإشعار', color: Colors.red);
+    }
+  }
+
+  // تعيين مراقب دورة حياة التطبيق
+  void _setupAppLifecycleListener() {
+    // يمكن استخدام WidgetsBindingObserver للمراقبة
+    print('تم تعيين مراقب دورة حياة التطبيق');
+    // في التطبيق الفعلي، يجب تنفيذ AppLifecycleListener
   }
 
   Future<void> subscribeToTopic(String topic) async {
     // التحقق من أن المنصة تدعم الاشتراك في المواضيع
     if (kIsWeb) {
       print('الاشتراك في المواضيع غير مدعوم في منصة الويب');
-      _safeShowMessage('الاشتراك في المواضيع غير مدعوم في منصة الويب', color: Colors.orange);
+      _safeShowMessage('الاشتراك في المواضيع غير مدعوم في منصة الويب',
+          color: Colors.orange);
       return;
     }
 
@@ -435,15 +631,18 @@ static Future<void> _handleDelete(RemindersNotifier notifier, int reminderId) as
   Future<void> unsubscribeFromTopic(String topic) async {
     if (kIsWeb) {
       print('إلغاء الاشتراك من المواضيع غير مدعوم في منصة الويب');
-      _safeShowMessage('إلغاء الاشتراك من المواضيع غير مدعوم في منصة الويب', color: Colors.orange);
+      _safeShowMessage('إلغاء الاشتراك من المواضيع غير مدعوم في منصة الويب',
+          color: Colors.orange);
       return;
     }
 
     try {
       await _firebaseMessaging.unsubscribeFromTopic(topic);
-      _safeShowMessage('تم إلغاء الاشتراك من الموضوع: $topic', color: Colors.orange);
+      _safeShowMessage('تم إلغاء الاشتراك من الموضوع: $topic',
+          color: Colors.orange);
     } catch (e) {
-      _safeShowMessage('خطأ في إلغاء الاشتراك من الموضوع: $e', color: Colors.red);
+      _safeShowMessage('خطأ في إلغاء الاشتراك من الموضوع: $e',
+          color: Colors.red);
     }
   }
 
@@ -471,7 +670,12 @@ static Future<void> _handleDelete(RemindersNotifier notifier, int reminderId) as
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({'token': fcmToken,'topic': 'user_$userId','user_id':userId,'platform':'mobile_app'}),
+        body: jsonEncode({
+          'token': fcmToken,
+          'topic': 'user_$userId',
+          'user_id': userId,
+          'platform': 'mobile_app'
+        }),
       );
 
       if (response.statusCode == 200) {
@@ -479,7 +683,8 @@ static Future<void> _handleDelete(RemindersNotifier notifier, int reminderId) as
         _safeShowMessage(message, color: Colors.green);
         return message;
       } else {
-        final message = 'فشل في إرسال التوكن إلى الخادم: ${response.statusCode}';
+        final message =
+            'فشل في إرسال التوكن إلى الخادم: ${response.statusCode}';
         _safeShowMessage(message, color: Colors.red);
         return message;
       }
@@ -545,12 +750,12 @@ static Future<void> _handleDelete(RemindersNotifier notifier, int reminderId) as
           await unsubscribeFromTopic('user_$userId');
         }
       }
-      
+
       // حذف التوكن من التخزين المحلي
       await _storage.delete(key: 'fcmToken');
       await _storage.delete(key: 'auth_token');
       await _storage.delete(key: 'user_id');
-      
+
       print('تم تسجيل الخروج وإلغاء FCM Token');
     } catch (e) {
       print('خطأ في تسجيل الخروج: $e');

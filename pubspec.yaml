@@ -79,6 +79,7 @@ flutter:
   
   assets: 
     - assets/logo.png
+    - assets/notification.png
     - assets/sounds/bell.mp3
     - assets/sounds/chime.mp3
     - assets/sounds/notification.mp3

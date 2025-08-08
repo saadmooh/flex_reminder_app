@@ -21,6 +21,12 @@ class RemindersNotifier extends ChangeNotifier {
   int _currentPage = 1;
   bool _isLoading = false;
   bool _isLoadingMore = false;
+  // متغيرات حماية من تكرار إعادة الجدولة
+  bool _isReschedulingInProgress = false;
+  Set<int> _currentlyRescheduling = <int>{};
+  DateTime? _lastRescheduleCheck;
+  static const Duration _rescheduleInterval =
+      Duration(minutes: 30); // تقليل من ساعة إلى 30 دقيقة
 
   // الخدمات
   final ApiService _apiService = ApiService();
@@ -806,62 +812,96 @@ class RemindersNotifier extends ChangeNotifier {
     }
   }
 
-  /// فحص وإعادة جدولة التذكيرات غير المقروءة
+  /// فحص وإعادة جدولة التذكيرات غير المقروءة مع حماية من التكرار
   Future<void> _checkAndRescheduleUnreadReminders() async {
-    final now = DateTime.now();
-    final List<Reminder> updatedReminders = [];
+    // حماية من التكرار
+    if (_isReschedulingInProgress) {
+      print('عملية إعادة الجدولة قيد التقدم بالفعل، تجاهل الطلب');
+      return;
+    }
 
-    for (var reminder in _unreadReminders) {
-      if (reminder.nextReminderTime != null &&
-          reminder.nextReminderTime!.isNotEmpty) {
-        try {
-          final nextReminderTime = DateTime.parse(reminder.nextReminderTime!);
-          if (nextReminderTime.isBefore(now)) {
-            print('التذكير ${reminder.id} فات موعده: $nextReminderTime');
-            if (reminder.url != null && reminder.importance != null) {
-              // إعادة جدولة التذكير
-              final rescheduleResponse = await _apiService.reschedulePost(
-                reminder.url!,
-                reminder.importance!,
-              );
-              final newReminderTime =
-                  rescheduleResponse['post']['next_reminder_time'] as String?;
-              if (newReminderTime != null && newReminderTime.isNotEmpty) {
-                // تحديث التذكير بالتاريخ الجديد
-                final updatedReminder = reminder.copyWith(
-                  nextReminderTime: newReminderTime,
-                );
-                updatedReminders.add(updatedReminder);
-                await _updateCachedReminder(updatedReminder);
-                print(
-                    'تم إعادة جدولة التذكير ${reminder.id} إلى: $newReminderTime');
+    _isReschedulingInProgress = true;
+
+    try {
+      final now = DateTime.now(); // تصحيح: إضافة DateTime قبل now
+      final List<Reminder> updatedReminders = [];
+
+      for (var reminder in _unreadReminders) {
+        // تجاهل التذكيرات التي يتم معالجتها حالياً
+        if (_currentlyRescheduling.contains(reminder.id)) {
+          updatedReminders.add(reminder);
+          continue;
+        }
+
+        if (reminder.nextReminderTime != null &&
+            reminder.nextReminderTime!.isNotEmpty) {
+          try {
+            final nextReminderTime = DateTime.parse(reminder.nextReminderTime!);
+            if (nextReminderTime.isBefore(now)) {
+              print('التذكير ${reminder.id} فات موعده: $nextReminderTime');
+
+              if (reminder.url != null && reminder.importance != null) {
+                // إضافة للقائمة المعالجة حالياً
+                _currentlyRescheduling.add(reminder.id);
+
+                try {
+                  // إعادة جدولة التذكير
+                  final rescheduleResponse = await _apiService.reschedulePost(
+                    reminder.url!,
+                    reminder.importance!,
+                  );
+
+                  final newReminderTime = rescheduleResponse['post']
+                      ['next_reminder_time'] as String?;
+
+                  if (newReminderTime != null && newReminderTime.isNotEmpty) {
+                    // تحديث التذكير بالتاريخ الجديد
+                    final updatedReminder = reminder.copyWith(
+                      nextReminderTime: newReminderTime,
+                    );
+                    updatedReminders.add(updatedReminder);
+                    await _updateCachedReminder(updatedReminder);
+                    print(
+                        'تم إعادة جدولة التذكير ${reminder.id} إلى: $newReminderTime');
+                  } else {
+                    print(
+                        'فشل في الحصول على تاريخ جديد للتذكير ${reminder.id}');
+                    updatedReminders.add(reminder);
+                  }
+                } catch (e) {
+                  print('خطأ في إعادة جدولة التذكير ${reminder.id}: $e');
+                  updatedReminders.add(reminder);
+                } finally {
+                  // إزالة من القائمة المعالجة
+                  _currentlyRescheduling.remove(reminder.id);
+                }
               } else {
-                print('فشل في الحصول على تاريخ جديد للتذكير ${reminder.id}');
+                print(
+                    'بيانات غير كافية لإعادة جدولة التذكير ${reminder.id}: url أو importance مفقود');
                 updatedReminders.add(reminder);
               }
             } else {
-              print(
-                  'بيانات غير كافية لإعادة جدولة التذكير ${reminder.id}: url أو importance مفقود');
               updatedReminders.add(reminder);
             }
-          } else {
+          } catch (e) {
+            print('خطأ في معالجة التذكير ${reminder.id}: $e');
             updatedReminders.add(reminder);
           }
-        } catch (e) {
-          print('خطأ في معالجة التذكير ${reminder.id}: $e');
+        } else {
           updatedReminders.add(reminder);
         }
-      } else {
-        updatedReminders.add(reminder);
       }
-    }
 
-    // تحديث قائمة التذكيرات غير المقروءة
-    _unreadReminders
-      ..clear()
-      ..addAll(updatedReminders)
-      ..sort((a, b) => b.id.compareTo(a.id));
-    notifyListeners();
+      // تحديث قائمة التذكيرات غير المقروءة
+      _unreadReminders
+        ..clear()
+        ..addAll(updatedReminders)
+        ..sort((a, b) => b.id.compareTo(a.id));
+
+      notifyListeners();
+    } finally {
+      _isReschedulingInProgress = false;
+    }
   }
 
   /// تعيين حالة التحميل

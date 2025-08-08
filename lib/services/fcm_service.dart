@@ -470,11 +470,6 @@ class FcmService {
     }
   }
 
-  // إعداد معالجات الرسائل المحسنة (الاسم القديم للتوافق)
-  Future<void> _setupEnhancedMessageHandlers() async {
-    await _setupMessageHandlers();
-  }
-
   // إعداد معالجات الرسائل
   Future<void> _setupMessageHandlers() async {
     String? userId = await _storage.read(key: 'user_id');
@@ -515,7 +510,7 @@ class FcmService {
     });
 
     // معالج الرسائل في الخلفية
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  //  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
     // معالجة الرسالة الأولية عند فتح التطبيق من إشعار منهي
     RemoteMessage? initialMessage =
@@ -760,5 +755,35 @@ class FcmService {
     } catch (e) {
       print('خطأ في تسجيل الخروج: $e');
     }
+  }
+
+  // إضافة هذه الدوال إلى class FcmService
+
+  // دالة عامة للوصول إلى _processMessage من خارج الكلاس
+  static Future<void> processMessage(RemoteMessage message,
+      {required bool isBackground}) async {
+    await _processMessage(message, isBackground: isBackground);
+  }
+
+  // دالة عامة للوصول إلى _sendGenericNotification من خارج الكلاس
+  static Future<void> sendGenericNotification(
+      String title, String body, Map<String, dynamic> data) async {
+    await _sendGenericNotification(title, body, data);
+  }
+
+  // دالة عامة للتحقق من الرسائل المكررة
+  static bool isDuplicateMessage(String messageId) {
+    return _isDuplicateMessage(messageId);
+  }
+
+  // دالة عامة للتحقق من معالجة التذكير
+  static bool shouldProcessReminder(int reminderId) {
+    return _shouldProcessReminder(reminderId);
+  }
+
+  // دالة عامة لمعالجة الإشعارات العامة
+  static Future<void> handleGeneralNotification(String title, String body,
+      Map<String, dynamic> data, bool isBackground) async {
+    await _handleGeneralNotification(title, body, data, isBackground);
   }
 }

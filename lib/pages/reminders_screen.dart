@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
+import 'package:flex_reminder/globals.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flex_reminder/models/reminder.dart';
 import 'package:flex_reminder/services/notification_service.dart';
@@ -100,8 +102,7 @@ class _RemindersScreenState extends State<RemindersScreen>
     with SingleTickerProviderStateMixin {
   String _searchQuery = '';
   StreamSubscription? _intentSub;
-  StreamSubscription<List<ConnectivityResult>>?
-      _connectivitySubscription; // Fixed type
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   String? _sharedText;
   String? _selectedCategory;
   String? _selectedComplexity;
@@ -131,35 +132,71 @@ class _RemindersScreenState extends State<RemindersScreen>
     super.dispose();
   }
 
-  // مراقبة حالة الاتصال بالإنترنت
   void _initializeConnectivity() async {
-    final connectivityResult = await Connectivity().checkConnectivity();
-    _updateConnectionStatus(
-        connectivityResult); // This now returns List<ConnectivityResult>
+    final List<ConnectivityResult> connectivityResult =
+        await Connectivity().checkConnectivity();
+    _updateConnectionStatus(connectivityResult);
 
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
       (List<ConnectivityResult> results) {
-        // Fixed parameter type
         _updateConnectionStatus(results);
       },
     );
   }
+  
+  void _showSnackBar(String message, Color backgroundColor) {
+    if (navigatorKey?.currentContext != null) {
+      final scaffoldMessenger =
+          ScaffoldMessenger.of(navigatorKey!.currentContext!);
+
+      // التحقق من أن ScaffoldMessenger متاح
+      if (scaffoldMessenger.mounted) {
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: backgroundColor,
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(10),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        );
+      } else {
+        print('ScaffoldMessenger غير متاح، تم تجاهل SnackBar: $message');
+      }
+    } else {
+      print('التطبيق غير نشط، تم تجاهل SnackBar: $message');
+    }
+  }
+
+  // دالة للتحقق من حالة التطبيق قبل عرض الرسائل
+  void _safeShowMessage(String message, {Color? color}) {
+    if (kDebugMode) {
+      print('FCM Message: $message');
+    }
+
+    // محاولة عرض SnackBar مع معالجة الأخطاء
+    try {
+      _showSnackBar(message, color ?? Colors.blue);
+    } catch (e) {
+      print('خطأ في عرض الرسالة: $e');
+    }
+  }
 
   void _updateConnectionStatus(List<ConnectivityResult> connectivityResults) {
-    // Fixed parameter type
     final bool wasOnline = _isOnline;
-    setState(() {
-      // Check if any connection type is available (not none)
+    setState() {
       _isOnline = connectivityResults
           .any((result) => result != ConnectivityResult.none);
-    });
+    };
 
-    // إذا عاد الاتصال، حاول تحديث البيانات
     if (!wasOnline && _isOnline && mounted) {
-      print('الاتصال عاد، تحديث البيانات...');
+      print('🌐 الاتصال عاد، تحديث البيانات...');
       _refreshRemindersIfOnline();
     } else if (!_isOnline) {
-      print('لا يوجد اتصال بالإنترنت، استخدام البيانات المحلية');
+      print('📴 لا يوجد اتصال بالإنترنت، استخدام البيانات المحلية');
       _showOfflineSnackBar();
     }
   }
@@ -184,44 +221,46 @@ class _RemindersScreenState extends State<RemindersScreen>
     );
   }
 
-  // تهيئة التذكيرات مع التحقق من حالة الاتصال
   void _initializeReminders() async {
-    final remindersNotifier =
-        Provider.of<RemindersNotifier>(context, listen: false);
+    final remindersNotifier = Provider.of<RemindersNotifier>(context, listen: false);
+    _safeShowMessage('🔄 بدء تهيئة التذكيرات في RemindersScreen');
 
-    if (_isOnline && !_hasTriedOnlineLoad) {
-      print('محاولة تحميل البيانات من الإنترنت...');
-      _hasTriedOnlineLoad = true;
-      try {
-        await remindersNotifier.initialize();
-      } catch (e) {
-        print('فشل تحميل البيانات من الإنترنت: $e');
-        // في حالة الفشل، استخدم البيانات المحلية
+    try {
+      if (remindersNotifier.isInitialized) {
+        _safeShowMessage('✅ RemindersNotifier مهيء مسبقاً، تجاهل التهيئة');
+        return;
+      }
+
+      if (_isOnline && !_hasTriedOnlineLoad) {
+        _safeShowMessage('🌐 محاولة تحميل البيانات من الإنترنت...');
+        _hasTriedOnlineLoad = true;
+
+        try {
+          await remindersNotifier.initializeImproved(forceRefresh: false);
+          _safeShowMessage('✅ تم تحميل البيانات من الإنترنت بنجاح');
+        } catch (e) {
+          print('❌ فشل تحميل البيانات من الإنترنت: $e');
+          await _loadOfflineDataFallback(remindersNotifier);
+        }
+      } else {
+        print('💾 تحميل البيانات المحلية فقط...');
         await _loadOfflineDataFallback(remindersNotifier);
       }
-    } else {
-      print('تحميل البيانات المحلية فقط...');
-      await _loadOfflineDataFallback(remindersNotifier);
+    } catch (e) {
+      print('❌ خطأ في تهيئة التذكيرات: $e');
+      _showErrorSnackBar('خطأ في تحميل التذكيرات: $e');
     }
   }
 
-  // Fallback method for loading offline data
-  Future<void> _loadOfflineDataFallback(RemindersNotifier remindersNotifier) async {
-  try {
-    print('تحميل البيانات المحلية...');
-    await remindersNotifier.loadCachedData();
-  } catch (e) {
-    print('خطأ في تحميل البيانات المحلية: $e');
-  }
-}
-  // تحديث البيانات عند عودة الاتصال
   Future<void> _refreshRemindersIfOnline() async {
     if (!_isOnline) return;
 
-    final remindersNotifier =
-        Provider.of<RemindersNotifier>(context, listen: false);
+    print('🔄 تحديث البيانات بعد عودة الاتصال...');
+    final remindersNotifier = Provider.of<RemindersNotifier>(context, listen: false);
+
     try {
-      await remindersNotifier.forceRefreshReminders();
+      await remindersNotifier.initializeImproved(forceRefresh: true);
+
       final isArabic = Provider.of<LanguageManager>(context, listen: false)
               .locale
               .languageCode ==
@@ -238,8 +277,46 @@ class _RemindersScreenState extends State<RemindersScreen>
         ),
       );
     } catch (e) {
-      print('فشل تحديث البيانات: $e');
+      print('❌ فشل في تحديث البيانات: $e');
+      _showErrorSnackBar('فشل في تحديث البيانات');
     }
+  }
+
+  Future<void> _loadOfflineDataFallback(
+      RemindersNotifier remindersNotifier) async {
+    try {
+      print('💾 تحميل البيانات المحلية كخطة احتياطية...');
+      await remindersNotifier.loadCachedDataImproved();
+      print('✅ تم تحميل البيانات المحلية بنجاح');
+    } catch (e) {
+      print('❌ فشل في تحميل البيانات المحلية: $e');
+      _showErrorSnackBar('فشل في تحميل البيانات المحلية');
+    }
+  }
+
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+
+    final isArabic = Provider.of<LanguageManager>(context, listen: false)
+            .locale
+            .languageCode ==
+        'ar';
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          isArabic ? message : 'Error loading data',
+          style: const TextStyle(color: Colors.white),
+        ),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 3),
+        action: SnackBarAction(
+          label: isArabic ? 'إعادة المحاولة' : 'Retry',
+          textColor: Colors.white,
+          onPressed: () => _initializeReminders(),
+        ),
+      ),
+    );
   }
 
   List<Reminder> _getFilteredReminders(bool showOpened) {
@@ -309,7 +386,6 @@ class _RemindersScreenState extends State<RemindersScreen>
   }
 
   Future<void> _showSavePostModal(String? sharedUrl) async {
-    // التحقق من الاتصال قبل السماح بإضافة منشور جديد
     if (!_isOnline && sharedUrl != null) {
       final isArabic = Provider.of<LanguageManager>(context, listen: false)
               .locale
@@ -363,7 +439,6 @@ class _RemindersScreenState extends State<RemindersScreen>
   }
 
   void _loadMoreReminders(bool showOpened) {
-    // تحميل المزيد فقط إذا كان هناك اتصال بالإنترنت
     if (!_isOnline) {
       print('لا يوجد اتصال بالإنترنت لتحميل المزيد من التذكيرات');
       return;
@@ -424,7 +499,6 @@ class _RemindersScreenState extends State<RemindersScreen>
               preferredSize: const Size.fromHeight(kToolbarHeight),
               child: Column(
                 children: [
-                  // شريط حالة الاتصال
                   if (!_isOnline)
                     Container(
                       width: double.infinity,
@@ -515,7 +589,6 @@ class _RemindersScreenState extends State<RemindersScreen>
                 scrollInfo.metrics.maxScrollExtent - 200 &&
             !remindersNotifier.isLoadingMore &&
             _isOnline) {
-          // تحميل المزيد فقط عند وجود اتصال
           _loadMoreReminders(showOpened);
         }
         return false;

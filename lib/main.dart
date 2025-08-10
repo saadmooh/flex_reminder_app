@@ -24,200 +24,504 @@ import 'package:flex_reminder/services/fcm_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:convert';
 
-// معالج الرسائل في الخلفية - يجب أن يكون في المستوى الأعلى
+// إنشاء instance مشترك للـ NotificationService
+late NotificationService _backgroundNotificationService;
+late FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin;
+
+// معالج الرسائل في الخلفية - محسن مع الجدولة
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // تهيئة Firebase للخلفية
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  print('=== معالجة رسالة خلفية ===');
-  print('Message ID: ${message.messageId}');
-  print('Title: ${message.notification?.title}');
-  print('Body: ${message.notification?.body}');
-  print('Data: ${message.data}');
-
   try {
-    // تهيئة خدمة الإشعارات المحلية
-    //await _initializeBackgroundNotifications();
+    // تهيئة Firebase للخلفية إذا لم تكن مهيئة
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+    // تهيئة خدمة الإشعارات للخلفية
+    await _initializeBackgroundServices();
 
-    // معالجة الرسالة وإظهار الإشعار
-    await FcmService.processMessage(message, isBackground: true);
+    // استخراج البيانات من الرسالة
+    final String title =
+        message.notification?.title ?? message.data['title'] ?? 'تذكير جديد';
+
+    final String body = message.notification?.body ??
+        message.data['body'] ??
+        'لديك تذكير في انتظارك';
+
+    // محاولة معالجة الرسالة وجدولة الإشعارات
+    bool schedulingSuccess = false;
+
+    try {
+      // معالجة رسالة FCM
+      await FcmService.processMessage(message, isBackground: true);
+      // جدولة إشعار فوري (بعد 5 ثوان)
+      // schedulingSuccess = await _scheduleImmediateNotification(
+      //   title: title,
+      //   body: body,
+      //   data: message.data,
+      //   delay: const Duration(seconds: 5),
+      // );
+      await _scheduleFailbackNotification("title", body, message.data);
+      // // جدولة إشعار متأخر (بعد 30 دقيقة كتذكير إضافي)
+      // if (schedulingSuccess) {
+      //   await _scheduleDelayedNotification(
+      //     title: '$title - تذكير',
+      //     body: 'لا تنسى: $body',
+      //     data: message.data,
+      //     delay: const Duration(minutes: 30),
+      //   );
+      //   print('✅ تم جدولة الإشعارات المتعددة بنجاح');
+      // }
+    } catch (processingError) {
+      print('❌ خطأ في معالجة FCM: $processingError');
+      schedulingSuccess = false;
+      await _scheduleFailbackNotification(title, body, message.data);
+    }
+
+    // في حالة فشل الجدولة، جدول إشعار احتياطي
+
+    print('✅ تم معالجة الرسالة في الخلفية بنجاح');
   } catch (e) {
-    print('خطأ في معالجة الرسالة في الخلفية: $e');
+    print('❌ خطأ عام في معالجة الرسالة في الخلفية: $e');
+ await _scheduleFailbackNotification("_scheduleEmergencyNotification", "body", message.data);
+    // إشعار طوارئ في حالة الفشل الكامل
+  //  await _scheduleEmergencyNotification(message);
+  }
+}
 
-    // إظهار إشعار بديل في حالة الفشل
-    await _showFallbackNotification(message);
+// تهيئة الخدمات في الخلفية
+Future<void> _initializeBackgroundServices() async {
+  try {
+    // تهيئة NotificationService
+    _backgroundNotificationService = NotificationService();
+    await _backgroundNotificationService.init();
+
+    // تهيئة FlutterLocalNotifications
+    await _initializeLocalNotifications();
+
+    print('✅ تم تهيئة الخدمات في الخلفية');
+  } catch (e) {
+    print('❌ خطأ في تهيئة الخدمات في الخلفية: $e');
   }
 }
 
 // تهيئة الإشعارات المحلية في الخلفية
-Future<void> _initializeBackgroundNotifications() async {
-  const AndroidInitializationSettings initializationSettingsAndroid =
-      AndroidInitializationSettings('@mipmap/ic_launcher');
+Future<void> _initializeLocalNotifications() async {
+  try {
+    _flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
-  const DarwinInitializationSettings initializationSettingsDarwin =
-      DarwinInitializationSettings(
-    requestSoundPermission: true,
-    requestBadgePermission: true,
-    requestAlertPermission: true,
-  );
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
 
-  const InitializationSettings initializationSettings = InitializationSettings(
-    android: initializationSettingsAndroid,
-    iOS: initializationSettingsDarwin,
-  );
+    const DarwinInitializationSettings initializationSettingsDarwin =
+        DarwinInitializationSettings(
+      requestSoundPermission: true,
+      requestBadgePermission: true,
+      requestAlertPermission: true,
+    );
 
-  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-      FlutterLocalNotificationsPlugin();
+    const InitializationSettings initializationSettings =
+        InitializationSettings(
+      android: initializationSettingsAndroid,
+      iOS: initializationSettingsDarwin,
+    );
 
-  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+    await _flutterLocalNotificationsPlugin.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: (NotificationResponse response) {
+        print('تم النقر على الإشعار في الخلفية: ${response.payload}');
+        _handleBackgroundNotificationClick(response);
+      },
+    );
+
+    print('✅ تم تهيئة الإشعارات المحلية في الخلفية');
+  } catch (e) {
+    print('❌ خطأ في تهيئة الإشعارات المحلية في الخلفية: $e');
+  }
 }
 
-// معالجة الرسائل في الخلفية
-Future<void> _processBackgroundMessage(RemoteMessage message) async {
-  final String title =
-      message.data['title'] ?? message.notification?.title ?? 'إشعار جديد';
-  final String body = message.data['body'] ??
-      message.notification?.body ??
-      'تم استلام رسالة جديدة';
-
-  // محاولة استخراج معرف التذكير
-  int? reminderId;
+// جدولة إشعار فوري
+Future<bool> _scheduleImmediateNotification({
+  required String title,
+  required String body,
+  required Map<String, dynamic> data,
+  Duration delay = const Duration(seconds: 5),
+}) async {
   try {
-    reminderId = int.parse(body.trim());
-  } catch (e) {
-    // إذا لم يكن body رقماً، نعرض الرسالة كما هي
-    await _showBackgroundNotification(title, body, message.data);
-    return;
-  }
+    final scheduledDate = DateTime.now().add(delay);
 
-  if (reminderId != null && reminderId > 0) {
-    String notificationTitle = '';
-    String notificationBody = '';
+    final success = await _backgroundNotificationService.scheduleNotification(
+      title: '🔔 $title',
+      body: body,
+      scheduledDate: scheduledDate,
+      channelKey: 'scheduled_channel',
+      payload: {
+        'type': 'fcm_immediate',
+        'source_data': jsonEncode(data),
+        'scheduled_at': scheduledDate.toIso8601String(),
+        ...data.map((key, value) => MapEntry(key, value.toString())),
+      },
+    );
 
-    // تحديد محتوى الإشعار حسب نوع العملية
-    switch (title.toLowerCase().trim()) {
-      case 'reschedule':
-        notificationTitle = '🔄 إعادة جدولة تذكير';
-        notificationBody = 'تم إعادة جدولة التذكير رقم $reminderId';
-        break;
-      case 'update':
-        notificationTitle = '✏️ تحديث تذكير';
-        notificationBody = 'تم تحديث التذكير رقم $reminderId';
-        break;
-      case 'new':
-        notificationTitle = '🆕 تذكير جديد';
-        notificationBody = 'تم إضافة تذكير جديد رقم $reminderId';
-        break;
-      case 'markas_read':
-      case 'mark_as_read':
-        notificationTitle = '✅ تذكير مقروء';
-        notificationBody = 'تم وضع علامة "مقروء" على التذكير رقم $reminderId';
-        break;
-      case 'delete':
-        notificationTitle = '🗑️ حذف تذكير';
-        notificationBody = 'تم حذف التذكير رقم $reminderId';
-        break;
-      default:
-        notificationTitle = title;
-        notificationBody = 'تذكير رقم $reminderId';
+    if (success) {
+      print('✅ تم جدولة الإشعار الفوري للوقت: $scheduledDate');
+    } else {
+      print('❌ فشل في جدولة الإشعار الفوري');
     }
 
-    await _showBackgroundNotification(notificationTitle, notificationBody, {
-      ...message.data,
-      'reminder_id': reminderId.toString(),
-      'action': title,
-    });
+    return success;
+  } catch (e) {
+    print('❌ خطأ في جدولة الإشعار الفوري: $e');
+    return false;
   }
 }
 
-// عرض الإشعار في الخلفية
-Future<void> _showBackgroundNotification(
-    String title, String body, Map<String, dynamic> data) async {
-  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-      FlutterLocalNotificationsPlugin();
+// جدولة إشعار متأخر
+Future<bool> _scheduleDelayedNotification({
+  required String title,
+  required String body,
+  required Map<String, dynamic> data,
+  Duration delay = const Duration(minutes: 30),
+}) async {
+  try {
+    final scheduledDate = DateTime.now().add(delay);
 
-  const AndroidNotificationDetails androidNotificationDetails =
-      AndroidNotificationDetails(
-    'scheduled_channel',
-    'Scheduled Notifications',
-    channelDescription: 'Notifications for scheduled reminders',
-    importance: Importance.high,
-    priority: Priority.high,
-    showWhen: true,
-    playSound: true,
-    enableVibration: true,
-    icon: '@mipmap/ic_launcher',
-  );
+    final success = await _backgroundNotificationService.scheduleNotification(
+      title: '⏰ $title',
+      body: body,
+      scheduledDate: scheduledDate,
+      channelKey: 'scheduled_channel',
+      payload: {
+        'type': 'fcm_delayed',
+        'source_data': jsonEncode(data),
+        'scheduled_at': scheduledDate.toIso8601String(),
+        ...data.map((key, value) => MapEntry(key, value.toString())),
+      },
+    );
 
-  const DarwinNotificationDetails iosNotificationDetails =
-      DarwinNotificationDetails(
-    presentAlert: true,
-    presentBadge: true,
-    presentSound: true,
-  );
+    if (success) {
+      print('✅ تم جدولة الإشعار المتأخر للوقت: $scheduledDate');
+    } else {
+      print('❌ فشل في جدولة الإشعار المتأخر');
+    }
 
-  const NotificationDetails notificationDetails = NotificationDetails(
-    android: androidNotificationDetails,
-    iOS: iosNotificationDetails,
-  );
-
-  final int notificationId = data['reminder_id'] != null
-      ? int.tryParse(data['reminder_id'].toString()) ??
-          DateTime.now().millisecondsSinceEpoch ~/ 1000
-      : DateTime.now().millisecondsSinceEpoch ~/ 1000;
-
-  await flutterLocalNotificationsPlugin.show(
-    notificationId,
-    title,
-    body,
-    notificationDetails,
-    payload: jsonEncode(data),
-  );
-
-  print('✅ تم إظهار الإشعار في الخلفية: $title - $body');
+    return success;
+  } catch (e) {
+    print('❌ خطأ في جدولة الإشعار المتأخر: $e');
+    return false;
+  }
 }
 
-// إظهار إشعار بديل في حالة الفشل
-Future<void> _showFallbackNotification(RemoteMessage message) async {
+// جدولة إشعار احتياطي
+Future<void> _scheduleFailbackNotification(
+    String title, String body, Map<String, dynamic> data) async {
   try {
-    await _showBackgroundNotification(
-      message.notification?.title ?? 'إشعار جديد',
-      message.notification?.body ?? 'تم استلام رسالة جديدة',
-      message.data,
+    print('🔄 جدولة إشعار احتياطي...');
+
+    // إشعار احتياطي فوري
+    await _showDirectLocalNotification(
+      title: '⚠️ $title (احتياطي)',
+      body: '$body - تم استلام الرسالة',
+      data: data,
+      notificationId: DateTime.now().millisecondsSinceEpoch ~/ 1000,
     );
+
+    // إشعار احتياطي مجدول بعد دقيقة
+    final scheduledDate = DateTime.now().add(const Duration(seconds: 20));
+
+    await _backgroundNotificationService.scheduleNotification(
+      title: '⚠️ $title (احتياطي)',
+      body: 'رسالة لم يتم تسليمها: $body',
+      scheduledDate: scheduledDate,
+      channelKey: 'scheduled_channel',
+      payload: {
+        'type': 'fcm_fallback',
+        'original_title': title,
+        'original_body': body,
+        'source_data': jsonEncode(data),
+        'scheduled_at': scheduledDate.toIso8601String(),
+      },
+    );
+
+    print('✅ تم جدولة الإشعار الاحتياطي');
   } catch (e) {
-    print('فشل في إظهار الإشعار البديل: $e');
+    print('❌ خطأ في جدولة الإشعار الاحتياطي: $e');
+  }
+}
+
+// جدولة إشعار طوارئ
+Future<void> _scheduleEmergencyNotification(RemoteMessage message) async {
+  try {
+    print('🚨 جدولة إشعار طوارئ...');
+
+    final title = 'رسالة طوارئ';
+    final body = 'تم استلام رسالة ولكن حدث خطأ في المعالجة';
+
+    await _showDirectLocalNotification(
+      title: '🚨 $title',
+      body: body,
+      data: message.data,
+      notificationId: 99999, // معرف ثابت للطوارئ
+    );
+
+    print('✅ تم إرسال إشعار الطوارئ');
+  } catch (e) {
+    print('❌ فشل حتى في إرسال إشعار الطوارئ: $e');
+  }
+}
+
+// عرض إشعار محلي مباشر
+Future<void> _showDirectLocalNotification({
+  required String title,
+  required String body,
+  required Map<String, dynamic> data,
+  required int notificationId,
+}) async {
+  try {
+    const AndroidNotificationDetails androidNotificationDetails =
+        AndroidNotificationDetails(
+      'fcm_background_channel',
+      'FCM Background Notifications',
+      channelDescription: 'Notifications received when app is in background',
+      importance: Importance.high,
+      priority: Priority.high,
+      showWhen: true,
+      playSound: true,
+      enableVibration: true,
+      icon: '@mipmap/ic_launcher',
+      largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          'view_action',
+          'عرض',
+          titleColor: Color.fromARGB(255, 255, 255, 255),
+        ),
+        AndroidNotificationAction(
+          'dismiss_action',
+          'إخفاء',
+          titleColor: Color.fromARGB(255, 255, 0, 0),
+          contextual: true,
+        ),
+      ],
+    );
+
+    const DarwinNotificationDetails iosNotificationDetails =
+        DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      sound: 'default',
+      badgeNumber: 1,
+    );
+
+    const NotificationDetails notificationDetails = NotificationDetails(
+      android: androidNotificationDetails,
+      iOS: iosNotificationDetails,
+    );
+
+    await _flutterLocalNotificationsPlugin.show(
+      notificationId,
+      title,
+      body,
+      notificationDetails,
+      payload: jsonEncode(data),
+    );
+
+    print('✅ تم إظهار إشعار محلي مباشر: $title');
+  } catch (e) {
+    print('❌ خطأ في إظهار الإشعار المحلي المباشر: $e');
+  }
+}
+
+// معالجة النقر على الإشعار في الخلفية
+void _handleBackgroundNotificationClick(NotificationResponse response) {
+  try {
+    print('👆 تم النقر على إشعار في الخلفية');
+
+    if (response.payload != null) {
+      final data = jsonDecode(response.payload!);
+      print('البيانات: $data');
+
+      // يمكن إضافة منطق التنقل هنا
+      // مثل حفظ البيانات لمعالجتها عند فتح التطبيق
+    }
+  } catch (e) {
+    print('❌ خطأ في معالجة النقر على الإشعار: $e');
   }
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // تهيئة Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    print('🚀 بدء تهيئة التطبيق...');
 
-  // **الأهم**: تسجيل معالج الرسائل في الخلفية
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    // تهيئة Firebase
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    print('✅ تم تهيئة Firebase');
 
-  // تهيئة الخدمات
-  await NotificationService().init();
-  await FcmService().init();
+    // تسجيل معالج الرسائل في الخلفية قبل أي شيء آخر
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    print('✅ تم تسجيل معالج الرسائل في الخلفية');
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => LanguageManager()),
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => RemindersNotifier()),
-      ],
-      child: const MyApp(),
-    ),
-  );
+    // تهيئة خدمة الإشعارات
+    final notificationService = NotificationService();
+    await notificationService.init();
+    print('✅ تم تهيئة خدمة الإشعارات');
+
+    // تهيئة FcmService مع إعدادات محسنة
+    final fcmService = FcmService();
+    final fcmResult = await fcmService.init();
+    print('✅ تم تهيئة FCM Service: ${fcmResult['message']}');
+
+    // إعداد معالج الرسائل عندما يكون التطبيق في المقدمة
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+      print('📨 وصلت رسالة والتطبيق في المقدمة');
+
+      try {
+        // معالجة الرسالة في المقدمة
+        await FcmService.processMessage(message, isBackground: false);
+
+        // جدولة إشعار إضافي في المقدمة أيضاً
+        await _scheduleForegroundNotification(message, notificationService);
+      } catch (e) {
+        print('❌ خطأ في معالجة رسالة المقدمة: $e');
+      }
+    });
+
+    // معالجة النقر على الإشعار عندما يكون التطبيق في الخلفية
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      print('📱 تم فتح التطبيق من إشعار في الخلفية');
+      print('Message data: ${message.data}');
+
+      // معالجة التنقل إلى الصفحة المطلوبة
+      _handleMessageOpenedApp(message);
+    });
+
+    // التحقق من الرسالة الأولية
+    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      print('📬 تم فتح التطبيق من إشعار أولي');
+      print('Initial message data: ${initialMessage.data}');
+
+      // معالجة الرسالة الأولية
+      Future.delayed(const Duration(seconds: 2), () {
+        _handleMessageOpenedApp(initialMessage);
+      });
+    }
+
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => LanguageManager()),
+          ChangeNotifierProvider(create: (_) => AuthProvider()),
+          ChangeNotifierProvider.value(
+            value: RemindersNotifier.instance..navigatorKey = navigatorKey,
+          ),
+        ],
+        child: const MyApp(),
+      ),
+    );
+
+    print('✅ تم إطلاق التطبيق بنجاح');
+  } catch (e) {
+    print('❌ خطأ في تهيئة التطبيق: $e');
+
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error, size: 64, color: Colors.red),
+                const SizedBox(height: 16),
+                Text(
+                  'خطأ في تهيئة التطبيق',
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '$e',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// جدولة إشعار في المقدمة
+Future<void> _scheduleForegroundNotification(
+    RemoteMessage message, NotificationService notificationService) async {
+  try {
+    final title =
+        message.notification?.title ?? message.data['title'] ?? 'تذكير جديد';
+
+    final body =
+        message.notification?.body ?? message.data['body'] ?? 'لديك تذكير جديد';
+
+    // جدولة إشعار بعد 10 ثوان
+    final scheduledDate = DateTime.now().add(const Duration(seconds: 10));
+
+    await notificationService.scheduleNotification(
+      title: '📱 $title (مقدمة)',
+      body: body,
+      scheduledDate: scheduledDate,
+      channelKey: 'scheduled_channel',
+      payload: {
+        'type': 'fcm_foreground',
+        'source_data': jsonEncode(message.data),
+        'scheduled_at': scheduledDate.toIso8601String(),
+        ...message.data.map((key, value) => MapEntry(key, value.toString())),
+      },
+    );
+
+    print('✅ تم جدولة إشعار المقدمة للوقت: $scheduledDate');
+  } catch (e) {
+    print('❌ خطأ في جدولة إشعار المقدمة: $e');
+  }
+}
+
+// معالجة فتح التطبيق من إشعار
+void _handleMessageOpenedApp(RemoteMessage message) {
+  try {
+    print('🔗 معالجة فتح التطبيق من إشعار...');
+
+    final data = message.data;
+
+    // التحقق من وجود معرف التذكير
+    if (data.containsKey('reminder_id')) {
+      final reminderId = int.tryParse(data['reminder_id'].toString());
+      if (reminderId != null) {
+        // التنقل إلى صفحة التذكير
+        Future.delayed(const Duration(milliseconds: 500), () {
+          navigatorKey.currentState?.pushNamed('/reminder', arguments: {
+            'reminderId': reminderId,
+          });
+        });
+        return;
+      }
+    }
+
+    // التنقل الافتراضي إلى الصفحة الرئيسية
+    Future.delayed(const Duration(milliseconds: 500), () {
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/reminders',
+        (route) => false,
+      );
+    });
+  } catch (e) {
+    print('❌ خطأ في معالجة فتح التطبيق من إشعار: $e');
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -318,7 +622,7 @@ class MyApp extends StatelessWidget {
                   );
                 }
                 return MaterialPageRoute(
-                    builder: (_) => const RemindersScreen()); // Fallback
+                    builder: (_) => const RemindersScreen());
               case '/time_slots':
                 return MaterialPageRoute(
                     builder: (_) => const TimeSlotsScreen());
@@ -338,7 +642,6 @@ class MyApp extends StatelessWidget {
               case '/subscription_management':
                 return MaterialPageRoute(
                     builder: (_) => const SubscriptionManagementScreen());
-
               default:
                 return MaterialPageRoute(builder: (_) => const SplashScreen());
             }

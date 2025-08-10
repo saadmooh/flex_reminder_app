@@ -3,6 +3,7 @@ import 'package:flex_reminder/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:flex_reminder/providers/auth_provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flex_reminder/providers/reminders_notifier.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -49,84 +50,100 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _navigateBasedOnAuth() async {
-    try {
-      await Future.delayed(
-          const Duration(seconds: 2)); // تأخير لعرض شاشة Splash
+  try {
+    await Future.delayed(const Duration(seconds: 2)); // تأخير لعرض شاشة Splash
+    
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    
+    // فحص الاتصال بالإنترنت
+    bool hasInternet = await _checkInternetConnection();
+    
+    if (!hasInternet) {
+      // عند عدم وجود إنترنت، فحص الـ token المخزن محلياً فقط
+      print('No internet connection, checking local token...');
       
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      
-      // فحص الاتصال بالإنترنت
-      bool hasInternet = await _checkInternetConnection();
-      
-      if (!hasInternet) {
-        // عند عدم وجود إنترنت، فحص الـ token المخزن محلياً فقط
-        print('No internet connection, checking local token...');
-        
-        // التحقق من وجود token محفوظ محلياً
-        bool hasLocalToken = await authProvider.hasStoredToken();
-        
-        if (hasLocalToken) {
-          print('Local token found, navigating to reminders...');
-          // إذا كان هناك token محفوظ، انتقل إلى reminders مباشرة
-          _navigateToRoute('/reminders');
-          return;
-        } else {
-          print('No local token found, navigating to auth...');
-          // إذا لم يكن هناك token، انتقل إلى صفحة المصادقة
-          _navigateToRoute('/auth');
-          return;
-        }
-      }
-
-      // إذا كان هناك إنترنت، تنفيذ المنطق العادي
-      print('Internet connection available, proceeding with normal flow...');
-      
-      // الانتظار حتى اكتمال عملية المصادقة
-      while (authProvider.isLoading) {
-        await Future.delayed(const Duration(milliseconds: 100));
-      }
-
-      print('authProvider.isAuthenticated: ${authProvider.isAuthenticated}');
-      if (!authProvider.isAuthenticated) {
-        _navigateToRoute('/auth');
-        return;
-      }
-
-      final subscriptionResponse = await authProvider.checkSubscription();
-      print('Subscription Response: $subscriptionResponse');
-      if (subscriptionResponse['subscribed'] == true) {
-        if (subscriptionResponse['redirect_to_subscription'] == true) {
-          _navigateToRoute('/subscription_management');
-        } else {
-          _navigateToRoute('/reminders');
-        }
-      } else {
-        _navigateToRoute('/auth');
-      }
-    } catch (e) {
-      print('Error in _navigateBasedOnAuth: $e');
-      
-      // في حالة حدوث خطأ، تحقق من وجود token محلي كخطة احتياطية
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      // التحقق من وجود token محفوظ محلياً
       bool hasLocalToken = await authProvider.hasStoredToken();
       
       if (hasLocalToken) {
-        print('Error occurred but local token found, navigating to reminders...');
-        _navigateToRoute('/reminders');
-      } else {
-        print('Error occurred and no local token, navigating to auth...');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(localizations.error(e.toString())),
-              backgroundColor: Colors.red,
-            ),
-          );
+        print('Local token found, loading offline data and navigating to reminders...');
+        
+        // تهيئة RemindersNotifier للعمل بدون إنترنت
+        try {
+          final remindersNotifier = Provider.of<RemindersNotifier>(context, listen: false);
+          await remindersNotifier.initializeOfflineMode();
+        } catch (e) {
+          print('Error initializing offline mode: $e');
+          // حتى لو فشلت التهيئة، انتقل للتذكيرات
         }
+        
+        _navigateToRoute('/reminders');
+        return;
+      } else {
+        print('No local token found, navigating to auth...');
         _navigateToRoute('/auth');
+        return;
       }
     }
+
+    // إذا كان هناك إنترنت، تنفيذ المنطق العادي
+    print('Internet connection available, proceeding with normal flow...');
+    
+    // الانتظار حتى اكتمال عملية المصادقة
+    while (authProvider.isLoading) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
+    print('authProvider.isAuthenticated: ${authProvider.isAuthenticated}');
+    if (!authProvider.isAuthenticated) {
+      _navigateToRoute('/auth');
+      return;
+    }
+
+    final subscriptionResponse = await authProvider.checkSubscription();
+    print('Subscription Response: $subscriptionResponse');
+    if (subscriptionResponse['subscribed'] == true) {
+      if (subscriptionResponse['redirect_to_subscription'] == true) {
+        _navigateToRoute('/subscription_management');
+      } else {
+        _navigateToRoute('/reminders');
+      }
+    } else {
+      _navigateToRoute('/auth');
+    }
+  } catch (e) {
+    print('Error in _navigateBasedOnAuth: $e');
+    
+    // في حالة حدوث خطأ، تحقق من وجود token محلي كخطة احتياطية
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    bool hasLocalToken = await authProvider.hasStoredToken();
+    
+    if (hasLocalToken) {
+      print('Error occurred but local token found, loading offline data...');
+      
+      // تهيئة البيانات المحلية
+      try {
+        final remindersNotifier = Provider.of<RemindersNotifier>(context, listen: false);
+        await remindersNotifier.initializeOfflineMode();
+      } catch (offlineError) {
+        print('Error in offline initialization: $offlineError');
+      }
+      
+      _navigateToRoute('/reminders');
+    } else {
+      print('Error occurred and no local token, navigating to auth...');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(localizations.error(e.toString())),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      _navigateToRoute('/auth');
+    }
   }
+}
 
   @override
   void initState() {
@@ -158,6 +175,23 @@ class _SplashScreenState extends State<SplashScreen> {
             const SizedBox(height: 20),
             const CircularProgressIndicator(
               color: Colors.white,
+            ),
+            const SizedBox(height: 20),
+            // إضافة هذا النص لإعلام المستخدم
+            FutureBuilder<bool>(
+              future: _checkInternetConnection(),
+              builder: (context, snapshot) {
+                if (snapshot.hasData && !snapshot.data!) {
+                  return Text(
+                    localizations.workingOffline ?? 'العمل بدون إنترنت...',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
             ),
           ],
         ),

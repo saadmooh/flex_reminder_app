@@ -39,6 +39,7 @@ class AppLocalizations {
       _getValue('navigationFailed').replaceFirst('{message}', message);
   String get filterPressed => _getValue('filterPressed');
   String get timeSlots => _getValue('timeSlots');
+  String get workingOffline => _getValue('workingOffline');
   String get notificationSettings => _getValue('notificationSettings');
   String get subscriptionManagement => _getValue('subscriptionManagement');
   String get stats => _getValue('stats');

@@ -12,6 +12,22 @@ import 'package:flex_reminder/globals.dart';
 import 'package:flex_reminder/providers/reminders_notifier.dart';
 
 class FcmService {
+  // Singleton instance
+  static FcmService? _instance;
+  static FcmService get instance {
+    _instance ??= FcmService._internal();
+    return _instance!;
+  }
+
+  // Private constructor
+  FcmService._internal();
+
+  // Factory constructor that returns the same instance
+  factory FcmService() => instance;
+
+  // إضافة متغير لتتبع التهيئة
+  bool _isInitialized = false;
+
   static const String API_BASE_URL = 'https://flexreminder.com/api';
   static const String API_PASSWORD = 'api_password_app';
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
@@ -24,13 +40,14 @@ class FcmService {
   static final Map<int, DateTime> _lastProcessedTime = <int, DateTime>{};
   static const Duration _processDelay = Duration(seconds: 2);
 
+  // دالة للتحقق من حالة التهيئة
+  bool get isInitialized => _isInitialized;
+
   void _showSnackBar(String message, Color backgroundColor) {
-    // التحقق من أن التطبيق نشط ومتاح
     if (navigatorKey.currentContext != null) {
       final scaffoldMessenger =
           ScaffoldMessenger.of(navigatorKey.currentContext!);
 
-      // التحقق من أن ScaffoldMessenger متاح
       if (scaffoldMessenger.mounted) {
         scaffoldMessenger.showSnackBar(
           SnackBar(
@@ -52,13 +69,11 @@ class FcmService {
     }
   }
 
-  // دالة للتحقق من حالة التطبيق قبل عرض الرسائل
   void _safeShowMessage(String message, {Color? color}) {
     if (kDebugMode) {
       print('FCM Message: $message');
     }
 
-    // محاولة عرض SnackBar مع معالجة الأخطاء
     try {
       _showSnackBar(message, color ?? Colors.blue);
     } catch (e) {
@@ -66,7 +81,6 @@ class FcmService {
     }
   }
 
-  // دالة للتحقق من تكرار الرسالة
   static bool _isDuplicateMessage(String messageId) {
     if (_processedMessages.contains(messageId)) {
       print('رسالة مكررة تم تجاهلها: $messageId');
@@ -84,7 +98,6 @@ class FcmService {
     return false;
   }
 
-  // دالة للتحقق من التأخير بين معالجة التذكيرات
   static bool _shouldProcessReminder(int reminderId) {
     final now = DateTime.now();
     final lastProcessed = _lastProcessedTime[reminderId];
@@ -103,7 +116,6 @@ class FcmService {
     return true;
   }
 
-  // دالة معالجة الرسائل الموحدة
   static Future<void> _processMessage(RemoteMessage message,
       {required bool isBackground}) async {
     try {
@@ -120,19 +132,16 @@ class FcmService {
       if (title.isEmpty || body.isEmpty) {
         print('بيانات الرسالة غير مكتملة');
         if (!isBackground) {
-          final service = FcmService();
-          service._safeShowMessage('بيانات الرسالة غير مكتملة',
+          FcmService.instance._safeShowMessage('بيانات الرسالة غير مكتملة',
               color: Colors.orange);
         }
         return;
       }
 
-      // محاولة استخراج ID التذكير من body
       int? reminderId;
       try {
         reminderId = int.parse(body.trim());
       } catch (e) {
-        // إذا لم يكن body رقماً، قد تكون رسالة إشعار عادية
         print('body ليس رقماً، سيتم التعامل معه كإشعار عادي: $body');
         await _handleGeneralNotification(title, body, data, isBackground);
         return;
@@ -149,8 +158,7 @@ class FcmService {
 
       print('=== بدء معالجة التذكير $reminderId - العملية: $title ===');
 
-      final remindersNotifier = RemindersNotifier();
-      await remindersNotifier.initialize();
+      final remindersNotifier = RemindersNotifier.instance;
 
       bool operationSuccess = false;
       String successMessage = '';
@@ -219,8 +227,8 @@ class FcmService {
         print('✅ $successMessage');
 
         if (!isBackground) {
-          final service = FcmService();
-          service._safeShowMessage(successMessage, color: Colors.green);
+          FcmService.instance
+              ._safeShowMessage(successMessage, color: Colors.green);
         }
 
         if (isBackground) {
@@ -234,8 +242,7 @@ class FcmService {
         print('❌ $errorMessage');
 
         if (!isBackground) {
-          final service = FcmService();
-          service._safeShowMessage(errorMessage, color: Colors.red);
+          FcmService.instance._safeShowMessage(errorMessage, color: Colors.red);
         }
 
         if (isBackground) {
@@ -250,9 +257,8 @@ class FcmService {
       print('خطأ عام في معالجة الرسالة: $e');
 
       if (!isBackground) {
-        final service = FcmService();
-        service._safeShowMessage('خطأ في معالجة الرسالة: $e',
-            color: Colors.red);
+        FcmService.instance
+            ._safeShowMessage('خطأ في معالجة الرسالة: $e', color: Colors.red);
       } else {
         await _sendGenericNotification(
           'خطأ في المعالجة',
@@ -263,7 +269,6 @@ class FcmService {
     }
   }
 
-  // معالجة الإشعارات العامة (غير المتعلقة بالتذكيرات)
   static Future<void> _handleGeneralNotification(String title, String body,
       Map<String, dynamic> data, bool isBackground) async {
     print('=== معالجة إشعار عام ===');
@@ -274,19 +279,16 @@ class FcmService {
     if (isBackground) {
       await _sendGenericNotification(title, body, data);
     } else {
-      final service = FcmService();
-      service._safeShowMessage('$title: $body', color: Colors.blue);
+      FcmService.instance._safeShowMessage('$title: $body', color: Colors.blue);
     }
   }
 
-  // دالة لإرسال إشعار محلي عام
   static Future<void> _sendGenericNotification(
       String title, String body, Map<String, dynamic> data) async {
     try {
       print('📢 إرسال إشعار محلي: $title - $body');
 
-      final notificationService = NotificationService();
-      await notificationService.scheduleNotification(
+      await NotificationService.instance.scheduleNotification(
         title: title,
         body: body,
         channelKey: 'scheduled_channel',
@@ -297,7 +299,6 @@ class FcmService {
     }
   }
 
-  // دالة للحصول على user_id من التخزين الآمن
   Future<String?> _getUserId() async {
     try {
       return await _storage.read(key: 'user_id');
@@ -308,33 +309,16 @@ class FcmService {
   }
 
   Future<Map<String, dynamic>> init() async {
+    if (_isInitialized) {
+      print('FCM Service already initialized');
+      final fcmToken = await _storage.read(key: 'fcmToken');
+      return {
+        'fcmToken': fcmToken,
+        'message': 'FCM Service already initialized',
+      };
+    }
+
     try {
-      // طلب الأذونات أولاً
-      NotificationSettings settings =
-          await _firebaseMessaging.requestPermission(
-        alert: true,
-        announcement: false,
-        badge: true,
-        carPlay: false,
-        criticalAlert: false,
-        provisional: false,
-        sound: true,
-      );
-
-      if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-        print('تم منح أذونات الإشعارات');
-      } else if (settings.authorizationStatus ==
-          AuthorizationStatus.provisional) {
-        print('تم منح أذونات مؤقتة للإشعارات');
-      } else {
-        print('لم يتم منح أذونات الإشعارات');
-        return {
-          'fcmToken': null,
-          'message': 'لم يتم منح أذونات الإشعارات',
-        };
-      }
-
-      // الحصول على FCM token
       final fcmToken = await getAccessToken();
       if (fcmToken != null) {
         _safeShowMessage("تم الحصول على FCM Token بنجاح", color: Colors.green);
@@ -347,10 +331,8 @@ class FcmService {
         };
       }
 
-      // إرسال التوكن إلى الباكند
       String message = await sendFcmTokenToBackend();
 
-      // الاشتراك في موضوع المستخدم باستخدام user_id المخزن
       if (!kIsWeb) {
         final userId = await _getUserId();
         if (userId != null) {
@@ -364,13 +346,11 @@ class FcmService {
         print('الاشتراك في المواضيع غير مدعوم في منصة الويب');
       }
 
-      // إعداد معالجات الرسائل المحسنة
       await _setupMessageHandlers();
-
-      // إعداد مراقب دورة حياة التطبيق
       _setupAppLifecycleListener();
 
       print('✅ تم تهيئة FCM المحسن بنجاح');
+      _isInitialized = true;
 
       return {
         'fcmToken': fcmToken,
@@ -385,10 +365,8 @@ class FcmService {
     }
   }
 
-  // دالة لمعالجة منطق التنقل عند فتح التطبيق من الإشعار
   void _handleNavigationLogic(RemoteMessage message, String userTopic) {
     try {
-      // منطق التنقل حسب نوع الرسالة
       final String title =
           message.data['title'] ?? message.notification?.title ?? '';
       final String body =
@@ -399,37 +377,26 @@ class FcmService {
       print('معرف التذكير: $body');
       print('الموضوع: $userTopic');
 
-      // يمكن إضافة منطق التنقل هنا حسب نوع الرسالة
       switch (title.toLowerCase().trim()) {
         case 'reschedule':
-          // التنقل إلى صفحة إعادة الجدولة
           print('🔄 التنقل إلى صفحة إعادة الجدولة');
           break;
         case 'update':
-          // التنقل إلى صفحة التحديث
           print('✏️ التنقل إلى صفحة تحديث التذكير');
           break;
         case 'new':
-          // التنقل إلى صفحة التذكيرات الجديدة
           print('🆕 التنقل إلى صفحة التذكيرات الجديدة');
           break;
         case 'markas_read':
         case 'mark_as_read':
-          // التنقل إلى صفحة التذكيرات المقروءة
           print('✅ التنقل إلى صفحة التذكيرات المقروءة');
           break;
         case 'delete':
-          // التنقل إلى الصفحة الرئيسية أو صفحة التذكيرات
           print('🗑️ التنقل إلى الصفحة الرئيسية');
           break;
         default:
-          // التنقل العام للإشعارات غير المتعلقة بالتذكيرات
           print('📱 التنقل العام للإشعار');
       }
-
-      // يمكن استخدام Navigator.pushNamed أو أي نظام تنقل آخر هنا
-      // مثال:
-      // Navigator.of(navigatorKey.currentContext!).pushNamed('/reminders');
     } catch (e) {
       print('❌ خطأ في معالجة منطق التنقل: $e');
     }
@@ -437,14 +404,12 @@ class FcmService {
 
   Future<String?> getAccessToken() async {
     try {
-      // في حالة الويب، استخدم Firebase token مباشرة
       if (kIsWeb) {
         return await _firebaseMessaging.getToken(
-          vapidKey: 'your-vapid-key-here', // يجب إضافة VAPID key للويب
+          vapidKey: 'your-vapid-key-here',
         );
       }
 
-      // للمنصات الأخرى، استخدم Service Account
       final jsonString = await rootBundle.loadString(
         'assets/flex-reminders-app-7e58d9767343.json',
       );
@@ -456,11 +421,9 @@ class FcmService {
           await auth.clientViaServiceAccount(accountCredentials, scopes);
       _safeShowMessage(client.credentials.accessToken.data,
           color: Colors.green);
-      // print('تم الحصول على Access Token: ${client.credentials.accessToken.data}')
       return client.credentials.accessToken.data;
     } catch (e) {
       print('خطأ في الحصول على Access Token: $e');
-      // محاولة الحصول على التوكن بطريقة بديلة
       try {
         return await _firebaseMessaging.getToken();
       } catch (fallbackError) {
@@ -470,49 +433,36 @@ class FcmService {
     }
   }
 
-  // إعداد معالجات الرسائل
   Future<void> _setupMessageHandlers() async {
     String? userId = await _storage.read(key: 'user_id');
     final userTopic = userId != null ? 'user_$userId' : 'unknown_user';
 
-    // معالج الرسائل عند فتح التطبيق
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       print('تم استلام رسالة أثناء تشغيل التطبيق: ${message.messageId}');
       print('الموضوع المستهدف: $userTopic');
       print('بيانات الرسالة: ${message.data}');
 
-      // التحقق من أن الرسالة مرسلة للموضوع الصحيح
       if (message.data.containsKey('topic') &&
           message.data['topic'] == userTopic) {
         print('تم استلام رسالة من الموضوع الصحيح: ${message.data['topic']}');
       }
 
-      // معالجة الرسالة باستخدام النظام المحسن
       _handleForegroundMessage(message);
 
-      // إظهار رسالة تأكيد للمستخدم (عرض الموضوع أو محتوى الرسالة)
       final topicMessage =
           message.data['topic'] ?? 'تم استلام رسالة من الموضوع: $userTopic';
       _safeShowMessage(topicMessage, color: Colors.green);
     });
 
-    // معالج الرسائل عند النقر على الإشعار
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       print('تم فتح التطبيق من خلال الإشعار: ${message.messageId}');
       print('الموضوع: $userTopic');
       print('بيانات الرسالة: ${message.data}');
 
-      // معالجة الرسالة باستخدام النظام المحسن
       _handleMessageOpenedApp(message);
-
-      // يمكنك إضافة منطق التنقل هنا حسب نوع الرسالة
       _handleNavigationLogic(message, userTopic);
     });
 
-    // معالج الرسائل في الخلفية
-  //  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-    // معالجة الرسالة الأولية عند فتح التطبيق من إشعار منهي
     RemoteMessage? initialMessage =
         await _firebaseMessaging.getInitialMessage();
     if (initialMessage != null) {
@@ -521,7 +471,6 @@ class FcmService {
       _handleNavigationLogic(initialMessage, userTopic);
     }
 
-    // مراقبة تحديث Token
     _firebaseMessaging.onTokenRefresh.listen((String newToken) {
       print('🔄 تم تحديث FCM Token');
       _storage.write(key: 'fcmToken', value: newToken);
@@ -531,30 +480,8 @@ class FcmService {
     print('✅ تم تعيين معالجات الرسائل');
   }
 
-  // دالة معالجة الرسائل في الخلفية
-  static Future<void> _firebaseMessagingBackgroundHandler(
-      RemoteMessage message) async {
-    print('=== معالجة رسالة خلفية ===');
-    print('Message ID: ${message.messageId}');
-    print('Data: ${message.data}');
-    print('Notification: ${message.notification?.toMap()}');
-
-    _isAppInForeground = false;
-
-    if (message.messageId != null && _isDuplicateMessage(message.messageId!)) {
-      return;
-    }
-
-    try {
-      await _processMessage(message, isBackground: true);
-    } catch (e) {
-      print('خطأ في معالجة الرسالة في الخلفية: $e');
-      await _sendGenericNotification(
-        message.notification?.title ?? 'إشعار جديد',
-        message.notification?.body ?? 'تم استلام بيانات جديدة',
-        message.data,
-      );
-    }
+  void _setupAppLifecycleListener() {
+    print('تم تعيين مراقب دورة حياة التطبيق');
   }
 
   // دالة معالجة الرسائل في المقدمة
@@ -599,15 +526,7 @@ class FcmService {
     }
   }
 
-  // تعيين مراقب دورة حياة التطبيق
-  void _setupAppLifecycleListener() {
-    // يمكن استخدام WidgetsBindingObserver للمراقبة
-    print('تم تعيين مراقب دورة حياة التطبيق');
-    // في التطبيق الفعلي، يجب تنفيذ AppLifecycleListener
-  }
-
   Future<void> subscribeToTopic(String topic) async {
-    // التحقق من أن المنصة تدعم الاشتراك في المواضيع
     if (kIsWeb) {
       print('الاشتراك في المواضيع غير مدعوم في منصة الويب');
       _safeShowMessage('الاشتراك في المواضيع غير مدعوم في منصة الويب',
@@ -690,13 +609,11 @@ class FcmService {
     }
   }
 
-  // دالة للتحقق من حالة التوكن
   Future<bool> isTokenValid() async {
     final token = await _storage.read(key: 'auth_token');
     return token != null && token.isNotEmpty;
   }
 
-  // دالة لإعادة الاشتراك في موضوع المستخدم (مفيدة عند تحديث التطبيق)
   Future<void> resubscribeToUserTopic() async {
     if (kIsWeb) {
       print('إعادة الاشتراك في المواضيع غير مدعومة في منصة الويب');
@@ -716,13 +633,11 @@ class FcmService {
     }
   }
 
-  // دالة للتحقق من حالة الاشتراك
   Future<String?> getCurrentUserTopic() async {
     final userId = await _getUserId();
     return userId != null ? 'user_$userId' : null;
   }
 
-  // دالة لتحديث FCM token
   Future<void> refreshFcmToken() async {
     try {
       final newToken = await getAccessToken();
@@ -735,10 +650,8 @@ class FcmService {
     }
   }
 
-  // دالة لتسجيل الخروج وإلغاء التوكن
   Future<void> logout() async {
     try {
-      // إلغاء الاشتراك من جميع المواضيع باستخدام user_id المخزن
       if (!kIsWeb) {
         final userId = await _getUserId();
         if (userId != null) {
@@ -746,7 +659,6 @@ class FcmService {
         }
       }
 
-      // حذف التوكن من التخزين المحلي
       await _storage.delete(key: 'fcmToken');
       await _storage.delete(key: 'auth_token');
       await _storage.delete(key: 'user_id');
@@ -757,33 +669,30 @@ class FcmService {
     }
   }
 
-  // إضافة هذه الدوال إلى class FcmService
-
-  // دالة عامة للوصول إلى _processMessage من خارج الكلاس
   static Future<void> processMessage(RemoteMessage message,
       {required bool isBackground}) async {
     await _processMessage(message, isBackground: isBackground);
   }
 
-  // دالة عامة للوصول إلى _sendGenericNotification من خارج الكلاس
   static Future<void> sendGenericNotification(
       String title, String body, Map<String, dynamic> data) async {
     await _sendGenericNotification(title, body, data);
   }
 
-  // دالة عامة للتحقق من الرسائل المكررة
   static bool isDuplicateMessage(String messageId) {
     return _isDuplicateMessage(messageId);
   }
 
-  // دالة عامة للتحقق من معالجة التذكير
   static bool shouldProcessReminder(int reminderId) {
     return _shouldProcessReminder(reminderId);
   }
 
-  // دالة عامة لمعالجة الإشعارات العامة
   static Future<void> handleGeneralNotification(String title, String body,
       Map<String, dynamic> data, bool isBackground) async {
     await _handleGeneralNotification(title, body, data, isBackground);
+  }
+
+  static void resetInstance() {
+    _instance = null;
   }
 }

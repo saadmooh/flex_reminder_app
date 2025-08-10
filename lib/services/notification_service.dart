@@ -4,22 +4,73 @@ import 'package:flutter/material.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:workmanager/workmanager.dart';
 import 'package:flex_reminder/services/api_service.dart';
 import 'package:flex_reminder/models/reminder.dart';
 import 'package:flex_reminder/globals.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:url_launcher/url_launcher.dart'; // Add this import for URL launching
+
+// WorkManager task for handling background rescheduling
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    try {
+      print('🚀 Starting WorkManager task: $task');
+
+      if (task == 'reschedule_reminder') {
+        final String postUrl = inputData?['postUrl'] ?? '';
+        final String importance = inputData?['importance'] ?? 'day';
+        final String title = inputData?['title'] ?? 'تذكير';
+        final int reminderId = inputData?['reminderId'] ?? 0;
+
+        if (postUrl.isEmpty || reminderId == 0) {
+          print('❌ Missing data in WorkManager task');
+          return false;
+        }
+
+        print('🔄 Sending reschedule request for reminder $reminderId');
+
+        final apiService = ApiService();
+        final Map<String, dynamic> resMap =
+            await apiService.reschedulePost(postUrl, importance);
+
+        final String newScheduledTimeStr = resMap['post']['next_reminder_time'];
+        final DateTime newScheduledDate = DateTime.parse(newScheduledTimeStr);
+
+        print('📅 Received new scheduled time: $newScheduledDate');
+
+        final notificationService = NotificationService();
+        await notificationService.scheduleReminderNotification(
+          reminderId: reminderId,
+          title: title,
+          url: postUrl,
+          scheduledDate: newScheduledDate,
+          importance: importance,
+          additionalPayload: inputData?['additionalPayload'] ?? {},
+        );
+
+        print('✅ Successfully rescheduled reminder $reminderId');
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      print('❌ Error in WorkManager task: $e');
+      return false;
+    }
+  });
+}
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
 
+  static NotificationService get instance => _instance;
+
   factory NotificationService() => _instance;
 
   NotificationService._internal();
-
-  final Map<int, Timer> _pendingTimers = {};
-  final Map<int, Timer> _checkTimers = {}; // للفحص الخفي
-  final Map<int, int> _attemptCounters = {}; // عداد المحاولات
 
   void _showSnackBar(String message, Color backgroundColor) {
     if (navigatorKey.currentContext != null) {
@@ -38,12 +89,15 @@ class NotificationService {
         ),
       );
     } else {
-      print('التطبيق غير نشط، تم تجاهل SnackBar: $message');
+      print('App not active, SnackBar ignored: $message');
     }
   }
 
   Future<void> init() async {
     tz.initializeTimeZones();
+
+    await Workmanager().initialize(callbackDispatcher, isInDebugMode: true);
+
     await AwesomeNotifications().initialize(
       'resource://drawable/notification',
       [
@@ -81,88 +135,157 @@ class NotificationService {
   @pragma("vm:entry-point")
   static Future<void> onNotificationCreated(
       ReceivedNotification receivedNotification) async {
-    print('📝 تم إنشاء الإشعار: ${receivedNotification.title}');
+    print('📝 Notification created: ${receivedNotification.title}');
   }
 
   @pragma("vm:entry-point")
-  @pragma("vm:entry-point")
-static Future<void> onNotificationDisplayed(
-    ReceivedNotification receivedNotification) async {
-  print(
-      '📱 تم عرض الإشعار: ${receivedNotification.title} في ${DateTime.now()}');
-   
-  // --- تعديل هنا ---
-  // استخدم _instance للوصول إلى الدالة العادية
-  _instance._showSnackBar('🔔 حان وقت التذكير: ${receivedNotification.title}', Colors.blue); 
-  // ------------------
+  static Future<void> onNotificationDisplayed(
+      ReceivedNotification receivedNotification) async {
+    print(
+        '📱 Notification displayed: ${receivedNotification.title} at ${DateTime.now()}');
 
-  final payload = receivedNotification.payload ?? {};
-  final bool isCheckNotification = payload['isCheckNotification'] == 'true';
-  if (!isCheckNotification) {
-    print('🔔 إشعار تذكير رئيسي: ${receivedNotification.title}');
-  } else {
-    print('⚠️ إشعار فحص غير متوقع - سيتم تجاهله');
+    _instance._showSnackBar(
+        '🔔 حان وقت التذكير: ${receivedNotification.title}', Colors.blue);
+
+    final payload = receivedNotification.payload ?? {};
+
+    final Map<String, String> cleanPayload = {};
+    payload.forEach((key, value) {
+      if (value != null) {
+        cleanPayload[key] = value;
+      }
+    });
+
+    await _instance._scheduleRescheduleTask(cleanPayload);
+
+    print('🔔 Main reminder notification: ${receivedNotification.title}');
   }
-}
 
   @pragma("vm:entry-point")
   static Future<void> onDismissActionReceived(
       ReceivedAction receivedAction) async {
-    print('❌ تم تجاهل الإشعار: ${receivedAction.title}');
+    print('❌ Notification dismissed: ${receivedAction.title}');
   }
 
   @pragma("vm:entry-point")
   static Future<void> onNotificationActionReceived(
       ReceivedAction receivedAction) async {
-    print('👆 تم النقر على الإشعار: ${receivedAction.title}');
-    _instance._cancelTimerForNotification(receivedAction.id!);
+    print('👆 Notification tapped: ${receivedAction.title}');
 
     final payload = receivedAction.payload ?? {};
-    final bool isCheckNotification = payload['isCheckNotification'] == 'true';
+    final String reminderIdStr = payload['id'] ?? '';
+    final String? url = payload['url'];
+    final int? reminderId = int.tryParse(reminderIdStr);
 
-    if (!isCheckNotification) {
-      final String reminderIdStr = payload['id'] ?? '';
-      final int? reminderId = int.tryParse(reminderIdStr);
-      
-      if (reminderId != null) {
-        final Map<String, dynamic> arguments = {
-          'reminderId': reminderId,
-        };
-        
-        navigatorKey.currentState?.pushNamed('/reminder', arguments: arguments);
-        print('🔗 تم توجيه المستخدم لصفحة التذكير بالمعرف: $reminderId');
+    // Check if URL exists and is valid, then attempt to launch it
+    if (url != null && url.isNotEmpty) {
+      final Uri? uri = Uri.tryParse(url);
+      if (uri != null && await canLaunchUrl(uri)) {
+        try {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          print('🌐 Successfully launched URL: $url');
+
+          // Cancel rescheduling task since the user interacted with the notification
+          if (reminderId != null) {
+            await _instance._cancelRescheduleTask(reminderId);
+            print('✅ Canceled rescheduling task for reminder $reminderId');
+          }
+          return; // Exit after launching the URL
+        } catch (e) {
+          print('❌ Error launching URL: $e');
+          _instance._showSnackBar('خطأ في فتح الرابط: $url', Colors.red);
+        }
       } else {
-        print('❌ لا يمكن الحصول على معرف التذكير من البيانات المرفقة');
-        
-        final Reminder reminder = Reminder(
-          id: receivedAction.id!,
-          userId: 0,
-          url: payload['url'] ?? '',
-          title: receivedAction.title ?? 'تذكير',
-          content: payload['content'] ?? '',
-          imageUrl: payload['imageUrl'] ?? '',
-          importance: payload['importance'] ?? '',
-          scheduledTimes: (payload['scheduledTimes'] as List<dynamic>?)
-                  ?.map((e) => e.toString())
-                  .toList() ??
-              [],
-          nextReminderTime: payload['nextReminderTime'] ?? '',
-          isOpened: 1,
-          createdAt: payload['createdAt'] ?? '',
-          updatedAt: payload['updatedAt'] ?? '',
-          category: payload['category'] ?? '',
-          complexity: payload['complexity'] ?? '',
-          domain: payload['domain'] ?? '',
-        );
-        navigatorKey.currentState?.pushNamed('/reminder', arguments: reminder);
+        print('❌ Invalid or unsupported URL: $url');
+        _instance._showSnackBar('الرابط غير صالح: $url', Colors.red);
       }
+    } else {
+      print('⚠️ No URL provided in payload');
+    }
+
+    // Fallback to existing navigation logic if URL is not available or fails
+    if (reminderId != null) {
+      await _instance._cancelRescheduleTask(reminderId);
+
+      final Map<String, dynamic> arguments = {
+        'reminderId': reminderId,
+      };
+
+      navigatorKey.currentState?.pushNamed('/reminder', arguments: arguments);
+      print('🔗 Navigated to reminder page with ID: $reminderId');
+    } else {
+      print('❌ Could not retrieve reminder ID from payload');
+
+      final Reminder reminder = Reminder(
+        id: receivedAction.id!,
+        userId: 0,
+        url: payload['url'] ?? '',
+        title: receivedAction.title ?? 'تذكير',
+        content: payload['content'] ?? '',
+        imageUrl: payload['imageUrl'] ?? '',
+        importance: payload['importance'] ?? '',
+        scheduledTimes: (payload['scheduledTimes'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            [],
+        nextReminderTime: payload['nextReminderTime'] ?? '',
+        isOpened: 1,
+        createdAt: payload['createdAt'] ?? '',
+        updatedAt: payload['updatedAt'] ?? '',
+        category: payload['category'] ?? '',
+        complexity: payload['complexity'] ?? '',
+        domain: payload['domain'] ?? '',
+      );
+      navigatorKey.currentState?.pushNamed('/reminder', arguments: reminder);
     }
   }
 
-  void _cancelTimerForNotification(int id) {
-    if (_pendingTimers.containsKey(id)) {
-      _pendingTimers[id]?.cancel();
-      _pendingTimers.remove(id);
+  Future<void> _scheduleRescheduleTask(Map<String, String> payload) async {
+    try {
+      final String reminderIdStr = payload['id'] ?? '';
+      final int? reminderId = int.tryParse(reminderIdStr);
+
+      if (reminderId == null) {
+        print('❌ Cannot schedule rescheduling task: Missing reminder ID');
+        return;
+      }
+
+      final String postUrl = payload['url'] ?? '';
+      final String importance = payload['importance'] ?? 'day';
+      final String title = payload['title'] ?? 'تذكير';
+
+      if (postUrl.isEmpty) {
+        print('❌ Cannot schedule rescheduling task: Missing URL');
+        return;
+      }
+
+      print('⏰ Scheduling rescheduling task for reminder $reminderId');
+
+      await Workmanager().registerOneOffTask(
+        'reschedule_$reminderId',
+        'reschedule_reminder',
+        initialDelay: const Duration(minutes: 1),
+        inputData: {
+          'reminderId': reminderId,
+          'postUrl': postUrl,
+          'importance': importance,
+          'title': title,
+          'additionalPayload': Map<String, String>.from(payload),
+        },
+      );
+
+      print('✅ Scheduled rescheduling task for reminder $reminderId');
+    } catch (e) {
+      print('❌ Error scheduling rescheduling task: $e');
+    }
+  }
+
+  Future<void> _cancelRescheduleTask(int reminderId) async {
+    try {
+      await Workmanager().cancelByUniqueName('reschedule_$reminderId');
+      print('✅ Canceled rescheduling task for reminder $reminderId');
+    } catch (e) {
+      print('❌ Error canceling rescheduling task: $e');
     }
   }
 
@@ -174,11 +297,30 @@ static Future<void> onNotificationDisplayed(
     required String importance,
     Map<String, String>? additionalPayload,
   }) async {
-    print('🔧 جدولة التذكير $reminderId: $title للوقت: $scheduledDate');
+    await scheduleReminderNotification(
+      reminderId: reminderId,
+      title: title,
+      url: url,
+      scheduledDate: scheduledDate,
+      importance: importance,
+      additionalPayload: additionalPayload,
+    );
+  }
+
+  Future<void> scheduleReminderNotification({
+    required int reminderId,
+    required String title,
+    required String url,
+    required DateTime scheduledDate,
+    required String importance,
+    Map<String, String>? additionalPayload,
+  }) async {
+    print('🔧 Scheduling reminder $reminderId: $title for: $scheduledDate');
+
     if (scheduledDate.isBefore(DateTime.now())) {
-      print('⚠️ الوقت المجدول في الماضي: $scheduledDate');
-      print('⚠️ الوقت الحالي: ${DateTime.now()}');
-      print('❌ لن يتم جدولة التذكير $reminderId');
+      print('⚠️ Scheduled time is in the past: $scheduledDate');
+      print('⚠️ Current time: ${DateTime.now()}');
+      print('❌ Will not schedule reminder $reminderId');
       return;
     }
 
@@ -192,11 +334,11 @@ static Future<void> onNotificationDisplayed(
       'nextReminderTime': scheduledDate.toIso8601String(),
       ...?additionalPayload,
     };
-    
-    print('📦 البيانات المرفقة: $payload');
-    print('🆔 معرف التذكير المستخرج: $reminderId');
 
-    final bool scheduled = await scheduleReminderNotification(
+    print('📦 Payload: $payload');
+    print('🆔 Extracted reminder ID: $reminderId');
+
+    final bool scheduled = await _scheduleNotification(
       title: title,
       body: 'حان وقت التذكير!',
       scheduledDate: scheduledDate,
@@ -206,123 +348,13 @@ static Future<void> onNotificationDisplayed(
     );
 
     if (scheduled) {
-      const Duration checkDelay = Duration(hours: 6);
-      _scheduleHiddenCheck(
-        reminderId: reminderId,
-        checkTime: scheduledDate.add(checkDelay),
-        postUrl: url,
-        title: title,
-        importance: importance,
-        additionalPayload: additionalPayload,
-      );
-
-      print(
-          '✅ تم جدولة التذكير $reminderId مع فحص خفي بعد ${checkDelay.inHours} ساعات');
+      print('✅ Successfully scheduled reminder $reminderId');
     } else {
-      print('❌ فشل في جدولة التذكير $reminderId');
+      print('❌ Failed to schedule reminder $reminderId');
     }
   }
 
-  void _scheduleHiddenCheck({
-    required int reminderId,
-    required DateTime checkTime,
-    required String postUrl,
-    required String title,
-    required String importance,
-    Map<String, String>? additionalPayload,
-  }) {
-    _checkTimers[reminderId]?.cancel();
-
-    final Duration delay = checkTime.difference(DateTime.now());
-
-    if (delay.isNegative) {
-      print('⚡ وقت الفحص في الماضي، تنفيذ فوري للتذكير $reminderId');
-      _performBackgroundCheck(
-          reminderId, postUrl, title, importance, additionalPayload);
-      return;
-    }
-
-    _checkTimers[reminderId] = Timer(delay, () {
-      _performBackgroundCheck(
-          reminderId, postUrl, title, importance, additionalPayload);
-    });
-
-    print('⏰ تم جدولة فحص خفي للتذكير $reminderId في: $checkTime');
-    print(
-        '⏳ المدة المتبقية: ${delay.inHours} ساعة و ${delay.inMinutes % 60} دقيقة');
-  }
-
-  Future<void> _performBackgroundCheck(
-    int reminderId,
-    String postUrl,
-    String title,
-    String importance,
-    Map<String, String>? additionalPayload,
-  ) async {
-    print('🔍 بدء فحص خفي للتذكير $reminderId في: ${DateTime.now()}');
-
-    final int attempts = _attemptCounters[reminderId] ?? 0;
-    print('📊 عدد المحاولات الحالي: $attempts من 5');
-
-    if (attempts >= 5) {
-      print(
-          '⛔ تم تجاوز الحد الأقصى للمحاولات للتذكير $reminderId - إيقاف نهائي');
-      await cancelReminderNotifications(reminderId);
-      return;
-    }
-
-    try {
-      print('🌐 جاري فحص حالة التذكير من الخادم...');
-      final fetchedReminder = await ApiService().getReminder(postUrl);
-
-      if (fetchedReminder.isOpened == 1) {
-        print('✅ تم فتح التذكير $reminderId بنجاح - إلغاء جميع العمليات');
-        await cancelReminderNotifications(reminderId);
-      } else {
-        print(
-            '❌ لم يتم فتح التذكير $reminderId بعد - المحاولة ${attempts + 1}');
-
-        print('🔄 جاري طلب إعادة جدولة من الخادم...');
-        final Map<String, dynamic> resMap =
-            await ApiService().reschedulePost(postUrl, importance);
-
-        final String newScheduledTimeStr = resMap['post']['next_reminder_time'];
-        final DateTime newScheduledDate = DateTime.parse(newScheduledTimeStr);
-
-        _attemptCounters[reminderId] = attempts + 1;
-
-        print('📅 موعد جديد للتذكير: $newScheduledDate');
-        print('🔢 عدد المحاولات الجديد: ${_attemptCounters[reminderId]}');
-
-        await scheduleReminderWithHiddenCheck(
-          reminderId: reminderId,
-          title: title,
-          url: postUrl,
-          scheduledDate: newScheduledDate,
-          importance: importance,
-          additionalPayload: additionalPayload,
-        );
-
-        print('🔄 تمت إعادة جدولة التذكير $reminderId بنجاح');
-      }
-    } catch (e) {
-      print('❌ خطأ في الفحص الخفي للتذكير $reminderId: $e');
-
-      if (attempts < 3) {
-        print('🔁 إعادة محاولة الفحص بعد 30 دقيقة بسبب الخطأ');
-        _scheduleHiddenCheck(
-          reminderId: reminderId,
-          checkTime: DateTime.now().add(const Duration(minutes: 30)),
-          postUrl: postUrl,
-          title: title,
-          importance: importance,
-          additionalPayload: additionalPayload,
-        );
-      }
-    }
-  }
-
-  Future<bool> scheduleReminderNotification({
+  Future<bool> _scheduleNotification({
     required String title,
     required String body,
     required DateTime scheduledDate,
@@ -332,11 +364,12 @@ static Future<void> onNotificationDisplayed(
   }) async {
     try {
       final int notificationId = createUniqueId();
-      print('🆔 إنشاء إشعار بالمعرف: $notificationId');
+      print('🆔 Created notification with ID: $notificationId');
+
       final now = DateTime.now();
       if (scheduledDate.isBefore(now) ||
           scheduledDate.difference(now).inSeconds < 10) {
-        print('❌ وقت الإشعار غير صالح: $scheduledDate (الحالي: $now)');
+        print('❌ Invalid notification time: $scheduledDate (current: $now)');
         return false;
       }
 
@@ -352,7 +385,7 @@ static Future<void> onNotificationDisplayed(
           title: title,
           body: body,
           summary: summary,
-          wakeUpScreen: true,
+          wakeUpScreen: wakeUpScreen,
           category: NotificationCategory.Reminder,
           notificationLayout: NotificationLayout.Default,
           payload: payload,
@@ -366,7 +399,7 @@ static Future<void> onNotificationDisplayed(
         ),
       );
 
-      print('📅 تمت جدولة الإشعار لـ: $scheduledDate');
+      print('📅 Notification scheduled for: $scheduledDate');
 
       if (payload != null && payload.containsKey('id')) {
         final reminderId = int.parse(payload['id']!);
@@ -380,7 +413,7 @@ static Future<void> onNotificationDisplayed(
 
       return true;
     } catch (e) {
-      print('❌ خطأ في جدولة الإشعار: $e');
+      print('❌ Error scheduling notification: $e');
       return false;
     }
   }
@@ -397,7 +430,7 @@ static Future<void> onNotificationDisplayed(
     try {
       final DateTime finalScheduledDate =
           scheduledDate ?? DateTime.now().add(const Duration(seconds: 5));
-      return await scheduleReminderNotification(
+      return await _scheduleNotification(
         title: title,
         body: body,
         scheduledDate: finalScheduledDate,
@@ -406,7 +439,7 @@ static Future<void> onNotificationDisplayed(
         payload: payload,
       );
     } catch (e) {
-      print('❌ خطأ في جدولة الإشعار: $e');
+      print('❌ Error scheduling notification: $e');
       return false;
     }
   }
@@ -416,51 +449,42 @@ static Future<void> onNotificationDisplayed(
   }
 
   Future<void> cancelReminderNotifications(int reminderId) async {
-    print('🗑️ إلغاء جميع العمليات للتذكير $reminderId');
+    print('🗑️ Canceling all operations for reminder $reminderId');
 
     final notificationMap = await _getNotificationMap();
     final notificationIds = notificationMap[reminderId] ?? [];
 
-    print('📱 إلغاء ${notificationIds.length} إشعار مرئي');
+    print('📱 Canceling ${notificationIds.length} visible notifications');
     for (final id in notificationIds) {
       await AwesomeNotifications().cancel(id);
     }
 
-    if (_checkTimers.containsKey(reminderId)) {
-      _checkTimers[reminderId]?.cancel();
-      _checkTimers.remove(reminderId);
-      print('⏰ تم إلغاء المؤقت الخفي');
-    }
-
-    if (_attemptCounters.containsKey(reminderId)) {
-      _attemptCounters.remove(reminderId);
-      print('🔢 تم مسح عداد المحاولات');
-    }
+    await _cancelRescheduleTask(reminderId);
 
     notificationMap.remove(reminderId);
     await _saveNotificationMap(notificationMap);
 
-    print('✅ تم إلغاء جميع العمليات للتذكير $reminderId بنجاح');
+    print('✅ Successfully canceled all operations for reminder $reminderId');
   }
 
   Future<void> updateReminderNotifications(
       Map<String, dynamic> reminderData) async {
     final reminderId = reminderData['id'] as int?;
     if (reminderId == null) {
-      print('❌ لا يمكن تحديث الإشعارات: معرف التذكير مفقود');
+      print('❌ Cannot update notifications: Missing reminder ID');
       return;
     }
 
-    print('🔄 تحديث إشعارات التذكير $reminderId');
+    print('🔄 Updating notifications for reminder $reminderId');
 
     final nextReminderTimeStr = reminderData['next_reminder_time'] as String?;
     if (nextReminderTimeStr != null && nextReminderTimeStr.isNotEmpty) {
       final scheduledDate = DateTime.parse(nextReminderTimeStr);
 
       if (scheduledDate.isBefore(DateTime.now())) {
-        print('⚠️ وقت الإشعار في الماضي: $nextReminderTimeStr');
-        print('⚠️ الوقت الحالي: ${DateTime.now()}');
-        print('🔄 سيتم طلب إعادة جدولة من الخادم...');
+        print('⚠️ Notification time is in the past: $nextReminderTimeStr');
+        print('⚠️ Current time: ${DateTime.now()}');
+        print('🔄 Requesting reschedule from server...');
 
         try {
           final Map<String, dynamic> resMap = await ApiService().reschedulePost(
@@ -471,8 +495,8 @@ static Future<void> onNotificationDisplayed(
           final DateTime newScheduledDate = DateTime.parse(newScheduledTimeStr);
 
           if (newScheduledDate.isAfter(DateTime.now())) {
-            print('📅 تم الحصول على موعد جديد: $newScheduledDate');
-            await scheduleReminderWithHiddenCheck(
+            print('📅 Received new scheduled time: $newScheduledDate');
+            await scheduleReminderNotification(
               reminderId: reminderId,
               title: reminderData['title'] as String? ?? 'تذكير',
               url: reminderData['url'] as String? ?? '',
@@ -490,13 +514,14 @@ static Future<void> onNotificationDisplayed(
             );
             return;
           } else {
-            print('❌ الموعد الجديد أيضاً في الماضي: $newScheduledDate');
+            print(
+                '❌ New scheduled time is also in the past: $newScheduledDate');
           }
         } catch (e) {
-          print('❌ خطأ في إعادة الجدولة: $e');
+          print('❌ Error rescheduling: $e');
         }
 
-        print('❌ لن يتم جدولة التذكير $reminderId');
+        print('❌ Will not schedule reminder $reminderId');
         return;
       }
 
@@ -504,9 +529,7 @@ static Future<void> onNotificationDisplayed(
       final url = reminderData['url'] as String? ?? '';
       final importance = reminderData['importance'] as String? ?? 'day';
 
-      _attemptCounters[reminderId] = 0;
-
-      await scheduleReminderWithHiddenCheck(
+      await scheduleReminderNotification(
         reminderId: reminderId,
         title: title,
         url: url,
@@ -523,9 +546,9 @@ static Future<void> onNotificationDisplayed(
         },
       );
 
-      print('✅ تم تحديث التذكير $reminderId للوقت: $nextReminderTimeStr');
+      print('✅ Updated reminder $reminderId for time: $nextReminderTimeStr');
     } else {
-      print('⚠️ لا يمكن تحديث الإشعارات: next_reminder_time مفقود');
+      print('⚠️ Cannot update notifications: Missing next_reminder_time');
     }
   }
 
@@ -560,21 +583,16 @@ static Future<void> onNotificationDisplayed(
   }
 
   Future<void> cancelAllNotifications() async {
-    print('🧹 إلغاء جميع الإشعارات والمؤقتات');
+    print('🧹 Canceling all notifications and WorkManager tasks');
 
     await AwesomeNotifications().cancelAll();
 
-    for (final timer in _checkTimers.values) {
-      timer.cancel();
-    }
-    _checkTimers.clear();
-
-    _attemptCounters.clear();
+    await Workmanager().cancelAll();
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('notification_map');
 
-    print('✅ تم إلغاء جميع الإشعارات والمؤقتات بنجاح');
+    print('✅ Successfully canceled all notifications and WorkManager tasks');
   }
 
   Future<bool> checkPermissions() async {
@@ -604,26 +622,17 @@ static Future<void> onNotificationDisplayed(
   }
 
   void printStatus() {
-    print('📊 === حالة خدمة الإشعارات ===');
-    print('🔔 إشعارات نشطة: ${_pendingTimers.length}');
-    print('🔍 فحوصات خفية نشطة: ${_checkTimers.length}');
-    print('🔢 عدادات المحاولات: ${_attemptCounters.length}');
-
-    for (final entry in _attemptCounters.entries) {
-      print('   - التذكير ${entry.key}: ${entry.value} محاولات');
-    }
-
-    for (final entry in _checkTimers.entries) {
-      print('   - فحص خفي للتذكير ${entry.key}: نشط');
-    }
+    print('📊 === Notification Service Status ===');
+    print('🔔 Notification service active');
+    print('⚙️ WorkManager initialized for background tasks');
     print('================================');
   }
 
   Future<Map<String, dynamic>> getServiceStatus() async {
+    final notificationMap = await _getNotificationMap();
     return {
-      'activeNotifications': _pendingTimers.length,
-      'hiddenChecks': _checkTimers.length,
-      'attemptCounters': Map<int, int>.from(_attemptCounters),
+      'activeReminders': notificationMap.length,
+      'workmanagerEnabled': true,
     };
   }
 
@@ -652,45 +661,34 @@ static Future<void> onNotificationDisplayed(
       ),
     );
 
-    print('✅ تم تحديث قناة الإشعارات بالإعدادات الجديدة');
+    print('✅ Updated notification channel with new settings');
   }
 
   void dispose() {
-    print('🧹 تنظيف خدمة الإشعارات...');
-
-    for (final timer in _pendingTimers.values) {
-      timer.cancel();
-    }
-    for (final timer in _checkTimers.values) {
-      timer.cancel();
-    }
-
-    _pendingTimers.clear();
-    _checkTimers.clear();
-    _attemptCounters.clear();
-
-    print('✅ تم تنظيف جميع المؤقتات والموارد');
+    print('🧹 Cleaning up notification service...');
+    print('✅ All resources cleaned up');
   }
 
   bool _isValidScheduledTime(DateTime scheduledDate, int reminderId) {
     final now = DateTime.now();
     final difference = scheduledDate.difference(now);
 
-    print('🕐 الوقت الحالي: $now');
-    print('📅 الوقت المجدول: $scheduledDate');
-    print('⏰ الفرق الزمني: ${difference.inMinutes} دقيقة');
+    print('🕐 Current time: $now');
+    print('📅 Scheduled time: $scheduledDate');
+    print('⏰ Time difference: ${difference.inMinutes} minutes');
 
     if (difference.isNegative) {
-      print('❌ الوقت في الماضي للتذكير $reminderId');
+      print('❌ Time is in the past for reminder $reminderId');
       return false;
     }
 
     if (difference.inSeconds < 30) {
-      print('⚠️ الوقت قريب جداً (أقل من 30 ثانية) للتذكير $reminderId');
+      print(
+          '⚠️ Time is too close (less than 30 seconds) for reminder $reminderId');
       return false;
     }
 
-    print('✅ الوقت صالح للجدولة للتذكير $reminderId');
+    print('✅ Time is valid for scheduling reminder $reminderId');
     return true;
   }
 }

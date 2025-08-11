@@ -1339,33 +1339,33 @@ class RemindersNotifier extends ChangeNotifier {
   }
 
   Future<List<Reminder>> _loadCachedReminders(int page) async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    final key = '$_sessionRemindersKeyPrefix$page';
-    final cachedReminders = prefs.getString(key);
-    
-    if (cachedReminders != null && cachedReminders.isNotEmpty) {
-      try {
-        final List<dynamic> remindersList = jsonDecode(cachedReminders);
-        final reminders = remindersList
-            .map((r) => Reminder.fromJson(r as Map<String, dynamic>))
-            .where((r) => r.id != 0)
-            .toList();
-        
-        print('تم تحميل ${reminders.length} تذكير من الصفحة $page');
-        return reminders;
-      } catch (parseError) {
-        print('خطأ في تحليل بيانات الصفحة $page: $parseError');
-        // في حالة فساد البيانات، احذف المفتاح
-        await prefs.remove(key);
-        return [];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = '$_sessionRemindersKeyPrefix$page';
+      final cachedReminders = prefs.getString(key);
+
+      if (cachedReminders != null && cachedReminders.isNotEmpty) {
+        try {
+          final List<dynamic> remindersList = jsonDecode(cachedReminders);
+          final reminders = remindersList
+              .map((r) => Reminder.fromJson(r as Map<String, dynamic>))
+              .where((r) => r.id != 0)
+              .toList();
+
+          print('تم تحميل ${reminders.length} تذكير من الصفحة $page');
+          return reminders;
+        } catch (parseError) {
+          print('خطأ في تحليل بيانات الصفحة $page: $parseError');
+          // في حالة فساد البيانات، احذف المفتاح
+          await prefs.remove(key);
+          return [];
+        }
       }
+    } catch (e) {
+      print('خطأ في تحميل التذكيرات المخزنة للصفحة $page: $e');
     }
-  } catch (e) {
-    print('خطأ في تحميل التذكيرات المخزنة للصفحة $page: $e');
+    return [];
   }
-  return [];
-}
 
   Future<void> _clearSessionCache() async {
     try {
@@ -1783,188 +1783,189 @@ class RemindersNotifier extends ChangeNotifier {
   }
 
   /// تهيئة النظام للعمل بدون إنترنت
-Future<void> initializeOfflineMode() async {
-  print('🔄 تهيئة النظام للعمل بدون إنترنت...');
-  
-  try {
-    _setLoading(true);
-    
-    // تحميل البيانات المخزنة محلياً بدون محاولة المزامنة مع السيرفر
-    await _loadOfflineCachedData();
-    
-    // جدولة الإشعارات للتذكيرات المحلية
-    await _scheduleOfflineNotifications();
-    
-    _isInitialized = true;
-    print('✅ تم تهيئة النظام للعمل بدون إنترنت بنجاح');
-    
-  } catch (e) {
-    print('❌ خطأ في تهيئة النظام للعمل بدون إنترنت: $e');
-    // حتى لو فشلت التهيئة، نحاول تحميل البيانات الأساسية
-    await _loadBasicOfflineData();
-  } finally {
-    _setLoading(false);
-  }
-}
+  Future<void> initializeOfflineMode() async {
+    print('🔄 تهيئة النظام للعمل بدون إنترنت...');
 
-/// تحميل البيانات المخزنة محلياً بدون محاولة الاتصال بالسيرفر
-Future<void> _loadOfflineCachedData() async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    
-    print('📁 تحميل البيانات المخزنة محلياً...');
-    
-    // تحميل التذكيرات من جميع الصفحات المخزنة
-    List<Reminder> allCachedReminders = [];
-    int page = 1;
-    
-    while (true) {
-      final pageReminders = await _loadCachedReminders(page);
-      if (pageReminders.isEmpty) break;
-      
-      allCachedReminders.addAll(pageReminders);
-      page++;
+    try {
+      _setLoading(true);
+
+      // تحميل البيانات المخزنة محلياً بدون محاولة المزامنة مع السيرفر
+      await _loadOfflineCachedData();
+
+      // جدولة الإشعارات للتذكيرات المحلية
+      await _scheduleOfflineNotifications();
+
+      _isInitialized = true;
+      print('✅ تم تهيئة النظام للعمل بدون إنترنت بنجاح');
+    } catch (e) {
+      print('❌ خطأ في تهيئة النظام للعمل بدون إنترنت: $e');
+      // حتى لو فشلت التهيئة، نحاول تحميل البيانات الأساسية
+      await _loadBasicOfflineData();
+    } finally {
+      _setLoading(false);
     }
-    
-    if (allCachedReminders.isNotEmpty) {
-      // تصنيف التذكيرات
-      _readReminders = allCachedReminders.where((r) => r.isOpened == 1).toList()
-        ..sort((a, b) => b.id.compareTo(a.id));
-      
-      _unreadReminders = allCachedReminders.where((r) => r.isOpened == 0).toList()
-        ..sort((a, b) => b.id.compareTo(a.id));
-      
-      // معالجة التذكيرات غير المصنفة
-      final unclassified = allCachedReminders
-          .where((r) => r.isOpened != 0 && r.isOpened != 1)
-          .toList();
-      if (unclassified.isNotEmpty) {
-        _unreadReminders.addAll(unclassified);
-        _unreadReminders.sort((a, b) => b.id.compareTo(a.id));
+  }
+
+  /// تحميل البيانات المخزنة محلياً بدون محاولة الاتصال بالسيرفر
+  Future<void> _loadOfflineCachedData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      print('📁 تحميل البيانات المخزنة محلياً...');
+
+      // تحميل التذكيرات من جميع الصفحات المخزنة
+      List<Reminder> allCachedReminders = [];
+      int page = 1;
+
+      while (true) {
+        final pageReminders = await _loadCachedReminders(page);
+        if (pageReminders.isEmpty) break;
+
+        allCachedReminders.addAll(pageReminders);
+        page++;
       }
-      
-      print('✅ تم تحميل ${allCachedReminders.length} تذكير من التخزين المحلي');
-      print('   - مقروءة: ${_readReminders.length}');
-      print('   - غير مقروءة: ${_unreadReminders.length}');
-    } else {
-      print('⚠️ لا توجد تذكيرات مخزنة محلياً');
-    }
-    
-    // تحميل الفلاتر المخزنة
-    await _loadFiltersFromCache(prefs);
-    
-    // تحديث العدد الإجمالي
-    _totalReminders = allCachedReminders.length;
-    _currentPage = page;
-    
-    notifyListeners();
-    
-  } catch (e) {
-    print('❌ خطأ في تحميل البيانات المخزنة محلياً: $e');
-    throw e;
-  }
-}
 
-/// جدولة الإشعارات للتذكيرات المحلية (بدون إنترنت)
-Future<void> _scheduleOfflineNotifications() async {
-  try {
-    print('📅 جدولة الإشعارات للتذكيرات المحلية...');
-    
-    // إلغاء جميع الإشعارات الحالية أولاً
-    await _notificationService.cancelAllNotifications();
-    
-    // جدولة إشعارات للتذكيرات غير المقروءة فقط
-    int scheduledCount = 0;
-    for (final reminder in _unreadReminders) {
-      try {
-        if (reminder.nextReminderTime != null && 
-            reminder.nextReminderTime!.isNotEmpty) {
-          
-          final scheduledDate = DateTime.parse(reminder.nextReminderTime!);
-          final now = DateTime.now();
-          
-          // جدولة الإشعار فقط إذا كان الموعد في المستقبل
-          if (scheduledDate.isAfter(now)) {
-            await _scheduleReminderNotifications(reminder);
-            scheduledCount++;
-          } else {
-            print('تم تخطي التذكير ${reminder.id} - الموعد في الماضي');
+      if (allCachedReminders.isNotEmpty) {
+        // تصنيف التذكيرات
+        _readReminders = allCachedReminders
+            .where((r) => r.isOpened == 1)
+            .toList()
+          ..sort((a, b) => b.id.compareTo(a.id));
+
+        _unreadReminders = allCachedReminders
+            .where((r) => r.isOpened == 0)
+            .toList()
+          ..sort((a, b) => b.id.compareTo(a.id));
+
+        // معالجة التذكيرات غير المصنفة
+        final unclassified = allCachedReminders
+            .where((r) => r.isOpened != 0 && r.isOpened != 1)
+            .toList();
+        if (unclassified.isNotEmpty) {
+          _unreadReminders.addAll(unclassified);
+          _unreadReminders.sort((a, b) => b.id.compareTo(a.id));
+        }
+
+        print(
+            '✅ تم تحميل ${allCachedReminders.length} تذكير من التخزين المحلي');
+        print('   - مقروءة: ${_readReminders.length}');
+        print('   - غير مقروءة: ${_unreadReminders.length}');
+      } else {
+        print('⚠️ لا توجد تذكيرات مخزنة محلياً');
+      }
+
+      // تحميل الفلاتر المخزنة
+      await _loadFiltersFromCache(prefs);
+
+      // تحديث العدد الإجمالي
+      _totalReminders = allCachedReminders.length;
+      _currentPage = page;
+
+      notifyListeners();
+    } catch (e) {
+      print('❌ خطأ في تحميل البيانات المخزنة محلياً: $e');
+      throw e;
+    }
+  }
+
+  /// جدولة الإشعارات للتذكيرات المحلية (بدون إنترنت)
+  Future<void> _scheduleOfflineNotifications() async {
+    try {
+      print('📅 جدولة الإشعارات للتذكيرات المحلية...');
+
+      // إلغاء جميع الإشعارات الحالية أولاً
+      await _notificationService.cancelAllNotifications();
+
+      // جدولة إشعارات للتذكيرات غير المقروءة فقط
+      int scheduledCount = 0;
+      for (final reminder in _unreadReminders) {
+        try {
+          if (reminder.nextReminderTime != null &&
+              reminder.nextReminderTime!.isNotEmpty) {
+            final scheduledDate = DateTime.parse(reminder.nextReminderTime!);
+            final now = DateTime.now();
+
+            // جدولة الإشعار فقط إذا كان الموعد في المستقبل
+            if (scheduledDate.isAfter(now)) {
+              await _scheduleReminderNotifications(reminder);
+              scheduledCount++;
+            } else {
+              print('تم تخطي التذكير ${reminder.id} - الموعد في الماضي');
+            }
           }
+        } catch (e) {
+          print('خطأ في جدولة إشعار التذكير ${reminder.id}: $e');
+          continue;
+        }
+      }
+
+      print('✅ تم جدولة $scheduledCount إشعار تذكير للوضع بدون إنترنت');
+    } catch (e) {
+      print('❌ خطأ في جدولة الإشعارات للوضع بدون إنترنت: $e');
+    }
+  }
+
+  /// تحميل البيانات الأساسية في حالة فشل التحميل الكامل
+  Future<void> _loadBasicOfflineData() async {
+    try {
+      print('📋 تحميل البيانات الأساسية للوضع بدون إنترنت...');
+
+      final prefs = await SharedPreferences.getInstance();
+
+      // تحميل الفلاتر الأساسية
+      _categories = ['الكل'];
+      _complexities = ['الكل'];
+      _domains = ['الكل'];
+
+      // محاولة تحميل أي تذكيرات متاحة
+      try {
+        final firstPageReminders = await _loadCachedReminders(1);
+        if (firstPageReminders.isNotEmpty) {
+          _readReminders =
+              firstPageReminders.where((r) => r.isOpened == 1).toList();
+          _unreadReminders =
+              firstPageReminders.where((r) => r.isOpened == 0).toList();
+          _totalReminders = firstPageReminders.length;
         }
       } catch (e) {
-        print('خطأ في جدولة إشعار التذكير ${reminder.id}: $e');
-        continue;
+        print('لا توجد تذكيرات محلية متاحة: $e');
+        _readReminders = [];
+        _unreadReminders = [];
+        _totalReminders = 0;
       }
-    }
-    
-    print('✅ تم جدولة $scheduledCount إشعار تذكير للوضع بدون إنترنت');
-    
-  } catch (e) {
-    print('❌ خطأ في جدولة الإشعارات للوضع بدون إنترنت: $e');
-  }
-}
 
-/// تحميل البيانات الأساسية في حالة فشل التحميل الكامل
-Future<void> _loadBasicOfflineData() async {
-  try {
-    print('📋 تحميل البيانات الأساسية للوضع بدون إنترنت...');
-    
-    final prefs = await SharedPreferences.getInstance();
-    
-    // تحميل الفلاتر الأساسية
-    _categories = ['الكل'];
-    _complexities = ['الكل']; 
-    _domains = ['الكل'];
-    
-    // محاولة تحميل أي تذكيرات متاحة
-    try {
-      final firstPageReminders = await _loadCachedReminders(1);
-      if (firstPageReminders.isNotEmpty) {
-        _readReminders = firstPageReminders.where((r) => r.isOpened == 1).toList();
-        _unreadReminders = firstPageReminders.where((r) => r.isOpened == 0).toList();
-        _totalReminders = firstPageReminders.length;
-      }
+      _currentPage = 1;
+      notifyListeners();
+
+      print('✅ تم تحميل البيانات الأساسية للوضع بدون إنترنت');
     } catch (e) {
-      print('لا توجد تذكيرات محلية متاحة: $e');
-      _readReminders = [];
-      _unreadReminders = [];
-      _totalReminders = 0;
+      print('❌ خطأ في تحميل البيانات الأساسية: $e');
     }
-    
-    _currentPage = 1;
-    notifyListeners();
-    
-    print('✅ تم تحميل البيانات الأساسية للوضع بدون إنترنت');
-    
-  } catch (e) {
-    print('❌ خطأ في تحميل البيانات الأساسية: $e');
   }
-}
 
-/// التحقق من وجود تذكيرات مخزنة محلياً
-Future<bool> hasOfflineData() async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    
-    // فحص الصفحة الأولى على الأقل
-    final firstPageKey = '${_sessionRemindersKeyPrefix}1';
-    final cachedData = prefs.getString(firstPageKey);
-    
-    if (cachedData != null && cachedData.isNotEmpty) {
-      try {
-        final List<dynamic> remindersList = jsonDecode(cachedData);
-        return remindersList.isNotEmpty;
-      } catch (e) {
-        print('خطأ في قراءة البيانات المحلية: $e');
-        return false;
+  /// التحقق من وجود تذكيرات مخزنة محلياً
+  Future<bool> hasOfflineData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // فحص الصفحة الأولى على الأقل
+      final firstPageKey = '${_sessionRemindersKeyPrefix}1';
+      final cachedData = prefs.getString(firstPageKey);
+
+      if (cachedData != null && cachedData.isNotEmpty) {
+        try {
+          final List<dynamic> remindersList = jsonDecode(cachedData);
+          return remindersList.isNotEmpty;
+        } catch (e) {
+          print('خطأ في قراءة البيانات المحلية: $e');
+          return false;
+        }
       }
-    }
-    
-    return false;
-  } catch (e) {
-    print('خطأ في فحص البيانات المحلية: $e');
-    return false;
-  }
-}
 
+      return false;
+    } catch (e) {
+      print('خطأ في فحص البيانات المحلية: $e');
+      return false;
+    }
+  }
 }

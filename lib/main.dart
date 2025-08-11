@@ -56,23 +56,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       // معالجة رسالة FCM
       await FcmService.processMessage(message, isBackground: true);
       // جدولة إشعار فوري (بعد 5 ثوان)
-      // schedulingSuccess = await _scheduleImmediateNotification(
-      //   title: title,
-      //   body: body,
-      //   data: message.data,
-      //   delay: const Duration(seconds: 5),
-      // );
-      await _scheduleFailbackNotification("title", body, message.data);
-      // // جدولة إشعار متأخر (بعد 30 دقيقة كتذكير إضافي)
-      // if (schedulingSuccess) {
-      //   await _scheduleDelayedNotification(
-      //     title: '$title - تذكير',
-      //     body: 'لا تنسى: $body',
-      //     data: message.data,
-      //     delay: const Duration(minutes: 30),
-      //   );
-      //   print('✅ تم جدولة الإشعارات المتعددة بنجاح');
-      // }
+     // await _scheduleFailbackNotification(title, body, message.data);
     } catch (processingError) {
       print('❌ خطأ في معالجة FCM: $processingError');
       schedulingSuccess = false;
@@ -84,9 +68,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     print('✅ تم معالجة الرسالة في الخلفية بنجاح');
   } catch (e) {
     print('❌ خطأ عام في معالجة الرسالة في الخلفية: $e');
- await _scheduleFailbackNotification("_scheduleEmergencyNotification", "body", message.data);
+    await _scheduleFailbackNotification(
+        "_scheduleEmergencyNotification", "body", message.data);
     // إشعار طوارئ في حالة الفشل الكامل
-  //  await _scheduleEmergencyNotification(message);
+    //  await _scheduleEmergencyNotification(message);
   }
 }
 

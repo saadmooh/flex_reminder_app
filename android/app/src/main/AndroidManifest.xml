@@ -1,4 +1,7 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    
+    <!-- الأذونات الأساسية -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
@@ -8,17 +11,112 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     
+    <!-- أذونات إضافية لضمان عمل FCM عند إغلاق التطبيق -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_WAKEUP" />
+    
+    <!-- إذن مخصص للتطبيق لـ FCM -->
+    <permission
+        android:name="com.saadmohammed2000.flex_reminder.permission.C2D_MESSAGE"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.saadmohammed2000.flex_reminder.permission.C2D_MESSAGE" />
+    
     <application
         android:label="flex_reminder"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:allowBackup="true"
+        android:supportsRtl="true">
         
-        <!-- إضافة receiver للإشعارات المحلية مع android:exported -->
+        <!-- ==================== Firebase Cloud Messaging Services ==================== -->
+        
+        <!-- خدمة FCM الأساسية -->
+        <service
+            android:name="io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingService"
+            android:directBootAware="true"
+            android:exported="false"
+            android:stopWithTask="false">
+            <intent-filter android:priority="1000">
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- خدمة مخصصة للتعامل مع FCM عند إغلاق التطبيق -->
+        <service
+            android:name="com.saadmohammed2000.flex_reminder.MyFirebaseMessagingService"
+            android:directBootAware="true"
+            android:exported="false"
+            android:stopWithTask="false">
+            <intent-filter android:priority="1000">
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        
+        <!-- خدمة مقدمة لضمان بقاء التطبيق نشطاً لـ FCM -->
+        <service
+            android:name="com.saadmohammed2000.flex_reminder.FCMForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="dataSync" />
+            
+        <!-- ==================== FCM Receivers ==================== -->
+        
+        <!-- مستقبل FCM الرئيسي - FIXED -->
+        <receiver
+            android:name="io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingReceiver"
+            android:directBootAware="true"
+            android:exported="true"
+            android:permission="com.google.android.c2dm.permission.SEND"
+            tools:replace="android:exported">
+            <intent-filter android:priority="1000">
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- مستقبل مخصص لـ FCM -->
+        <receiver
+            android:name="com.saadmohammed2000.flex_reminder.MyFCMReceiver"
+            android:directBootAware="true"
+            android:exported="false"
+            android:permission="com.google.android.c2dm.permission.SEND">
+            <intent-filter android:priority="1000">
+                <action android:name="com.google.android.c2dm.intent.RECEIVE" />
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+                <category android:name="com.saadmohammed2000.flex_reminder" />
+            </intent-filter>
+        </receiver>
+        
+        <!-- مستقبل إعادة التشغيل -->
+        <receiver
+            android:name="com.saadmohammed2000.flex_reminder.BootReceiver"
+            android:directBootAware="true"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.REBOOT" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="package" />
+            </intent-filter>
+        </receiver>
+        
+        <!-- ==================== Local Notifications Receivers ==================== -->
+        
+        <!-- مستقبل الإشعارات المحلية عند التشغيل -->
         <receiver 
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:directBootAware="true"
             android:exported="false">
-            <intent-filter>
+            <intent-filter android:priority="1000">
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
                 <action android:name="android.intent.action.PACKAGE_REPLACED"/>
@@ -26,19 +124,19 @@
             </intent-filter>
         </receiver>
         
-        <!-- إضافة receiver لإدارة الإشعارات مع android:exported -->
+        <!-- مستقبل الإشعارات المجدولة -->
         <receiver 
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:directBootAware="true"
+            android:exported="false" />
+
+        <!-- مستقبل أحداث الإشعارات -->
+        <receiver 
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
+            android:directBootAware="true"
             android:exported="false" />
         
-        <!-- إضافة Firebase Cloud Messaging Service -->
-        <service
-            android:name="io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
+        <!-- ==================== Main Activity ==================== -->
         
         <activity
             android:name="com.saadmohammed2000.flex_reminder.MainActivity"
@@ -47,53 +145,98 @@
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize"
+            android:screenOrientation="portrait"
+            android:excludeFromRecents="false"
+            android:taskAffinity=""
+            android:allowTaskReparenting="false">
             
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
-              android:resource="@style/NormalTheme"
-              />
+              android:resource="@style/NormalTheme" />
               
+            <!-- Intent filter للتشغيل الأساسي -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- Add this intent filter for sharing text (including URLs) -->
+            <!-- Intent filter للمشاركة -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/*" />
             </intent-filter>
             
-            <!-- إضافة intent filter للتعامل مع النقر على الإشعارات -->
+            <!-- Intent filter للإشعارات -->
             <intent-filter android:autoVerify="true">
                 <action android:name="FLUTTER_NOTIFICATION_CLICK" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
+            <!-- Intent filter لفتح التطبيق من FCM -->
+            <intent-filter>
+                <action android:name="FCM_NOTIFICATION_CLICK" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="flexreminder" />
+            </intent-filter>
+
         </activity>
         
-        <!-- Don't delete the meta-data below. ... -->
+        <!-- ==================== Meta Data ==================== -->
+        
+        <!-- Flutter embedding -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
             
-        <!-- إضافة default_notification_icon للإشعارات -->
+        <!-- Firebase messaging configurations -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@mipmap/launcher_icon" />
             
-        <!-- إضافة default_notification_color -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@android:color/white" />
             
-        <!-- إضافة notification_channel_id -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="scheduled_channel" />
+
+        <!-- تمكين استقبال الرسائل حتى عند إغلاق التطبيق -->
+        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="true" />
             
+        <meta-data
+            android:name="firebase_analytics_collection_enabled"
+            android:value="true" />
+
+        <!-- تم إزالة automotive_app_desc لأنه غير مطلوب -->
+
     </application>
+
+    <!-- ==================== Queries للأمان ==================== -->
+    
+    <queries>
+        <!-- للتعامل مع Google Services -->
+        <package android:name="com.google.android.gms" />
+        
+        <!-- للتعامل مع متصفح الويب -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        
+        <!-- للتعامل مع تطبيقات الإعدادات -->
+        <intent>
+            <action android:name="android.settings.APPLICATION_DETAILS_SETTINGS" />
+        </intent>
+        
+        <!-- للتعامل مع إعدادات البطارية -->
+        <intent>
+            <action android:name="android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+        </intent>
+    </queries>
 
 </manifest>

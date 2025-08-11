@@ -10,6 +10,7 @@ import 'package:flex_reminder/services/api_functions/api_config.dart';
 import 'package:flex_reminder/services/notification_service.dart';
 import 'package:flex_reminder/globals.dart';
 import 'package:flex_reminder/providers/reminders_notifier.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class FcmService {
   // Singleton instance
@@ -39,6 +40,9 @@ class FcmService {
   static const int _maxProcessedMessages = 100;
   static final Map<int, DateTime> _lastProcessedTime = <int, DateTime>{};
   static const Duration _processDelay = Duration(seconds: 2);
+
+  bool _permissionsGranted = false;
+  bool get permissionsGranted => _permissionsGranted;
 
   // دالة للتحقق من حالة التهيئة
   bool get isInitialized => _isInitialized;
@@ -114,6 +118,131 @@ class FcmService {
         (key, value) => now.difference(value) > const Duration(minutes: 5));
 
     return true;
+  }
+
+  Future<bool> requestAllPermissions() async {
+    try {
+      print('🔐 طلب الأذونات المطلوبة...');
+
+      // طلب إذن الإشعارات من Firebase
+      NotificationSettings settings =
+          await _firebaseMessaging.requestPermission(
+        alert: true,
+        announcement: false,
+        badge: true,
+        carPlay: false,
+        criticalAlert: true,
+        provisional: false,
+        sound: true,
+      );
+
+      print('📱 حالة إذن الإشعارات: ${settings.authorizationStatus}');
+
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        _safeShowMessage('تم رفض إذن الإشعارات', color: Colors.red);
+        return false;
+      }
+
+      // طلب أذونات إضافية للأندرويد
+      if (!kIsWeb) {
+        // إذن الإشعارات
+        final notificationStatus = await Permission.notification.request();
+        print('📢 إذن الإشعارات: $notificationStatus');
+
+        // إذن تجاهل تحسين البطارية
+        final batteryStatus =
+            await Permission.ignoreBatteryOptimizations.request();
+        print('🔋 إذن تحسين البطارية: $batteryStatus');
+
+        // إذن الجدولة الدقيقة للتنبيهات
+        final scheduleStatus = await Permission.scheduleExactAlarm.request();
+        print('⏰ إذن الجدولة الدقيقة: $scheduleStatus');
+
+        _permissionsGranted = notificationStatus.isGranted;
+      } else {
+        _permissionsGranted =
+            settings.authorizationStatus == AuthorizationStatus.authorized;
+      }
+
+      if (_permissionsGranted) {
+        _safeShowMessage('تم منح جميع الأذونات بنجاح', color: Colors.green);
+      } else {
+        _safeShowMessage('بعض الأذونات غير ممنوحة', color: Colors.orange);
+      }
+
+      return _permissionsGranted;
+    } catch (e) {
+      print('❌ خطأ في طلب الأذونات: $e');
+      _safeShowMessage('خطأ في طلب الأذونات: $e', color: Colors.red);
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> init() async {
+    if (_isInitialized) {
+      print('FCM Service already initialized');
+      final fcmToken = await _storage.read(key: 'fcmToken');
+      return {
+        'fcmToken': fcmToken,
+        'message': 'FCM Service already initialized',
+        'permissionsGranted': _permissionsGranted,
+      };
+    }
+
+    try {
+      // طلب الأذونات أولاً
+      final permissionsGranted = await requestAllPermissions();
+      if (!permissionsGranted) {
+        _safeShowMessage('لم يتم منح الأذونات اللازمة', color: Colors.orange);
+      }
+
+      final fcmToken = await getAccessToken();
+      if (fcmToken != null) {
+        _safeShowMessage("تم الحصول على FCM Token بنجاح", color: Colors.green);
+        await _storage.write(key: 'fcmToken', value: fcmToken);
+      } else {
+        _safeShowMessage("فشل في الحصول على FCM Token", color: Colors.red);
+        return {
+          'fcmToken': null,
+          'message': 'فشل في الحصول على FCM Token',
+          'permissionsGranted': false,
+        };
+      }
+
+      String message = await sendFcmTokenToBackend();
+
+      if (!kIsWeb) {
+        final userId = await _getUserId();
+        if (userId != null) {
+          await subscribeToTopic('user_$userId');
+        } else {
+          print('لم يتم العثور على user_id في التخزين الآمن');
+          _safeShowMessage('لم يتم العثور على معرف المستخدم',
+              color: Colors.orange);
+        }
+      } else {
+        print('الاشتراك في المواضيع غير مدعوم في منصة الويب');
+      }
+
+      await _setupMessageHandlers();
+      _setupAppLifecycleListener();
+
+      print('✅ تم تهيئة FCM المحسن بنجاح');
+      _isInitialized = true;
+
+      return {
+        'fcmToken': fcmToken,
+        'message': message,
+        'permissionsGranted': permissionsGranted,
+      };
+    } catch (e) {
+      _safeShowMessage('فشل في تهيئة FCM: $e', color: Colors.red);
+      return {
+        'fcmToken': null,
+        'message': 'فشل في تهيئة FCM: $e',
+        'permissionsGranted': false,
+      };
+    }
   }
 
   static Future<void> _processMessage(RemoteMessage message,
@@ -305,63 +434,6 @@ class FcmService {
     } catch (e) {
       print('خطأ في الحصول على user_id: $e');
       return null;
-    }
-  }
-
-  Future<Map<String, dynamic>> init() async {
-    if (_isInitialized) {
-      print('FCM Service already initialized');
-      final fcmToken = await _storage.read(key: 'fcmToken');
-      return {
-        'fcmToken': fcmToken,
-        'message': 'FCM Service already initialized',
-      };
-    }
-
-    try {
-      final fcmToken = await getAccessToken();
-      if (fcmToken != null) {
-        _safeShowMessage("تم الحصول على FCM Token بنجاح", color: Colors.green);
-        await _storage.write(key: 'fcmToken', value: fcmToken);
-      } else {
-        _safeShowMessage("فشل في الحصول على FCM Token", color: Colors.red);
-        return {
-          'fcmToken': null,
-          'message': 'فشل في الحصول على FCM Token',
-        };
-      }
-
-      String message = await sendFcmTokenToBackend();
-
-      if (!kIsWeb) {
-        final userId = await _getUserId();
-        if (userId != null) {
-          await subscribeToTopic('user_$userId');
-        } else {
-          print('لم يتم العثور على user_id في التخزين الآمن');
-          _safeShowMessage('لم يتم العثور على معرف المستخدم',
-              color: Colors.orange);
-        }
-      } else {
-        print('الاشتراك في المواضيع غير مدعوم في منصة الويب');
-      }
-
-      await _setupMessageHandlers();
-      _setupAppLifecycleListener();
-
-      print('✅ تم تهيئة FCM المحسن بنجاح');
-      _isInitialized = true;
-
-      return {
-        'fcmToken': fcmToken,
-        'message': message,
-      };
-    } catch (e) {
-      _safeShowMessage('فشل في تهيئة FCM: $e', color: Colors.red);
-      return {
-        'fcmToken': null,
-        'message': 'فشل في تهيئة FCM: $e',
-      };
     }
   }
 

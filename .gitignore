@@ -10,6 +10,7 @@ build/
 # Android specific
 **/android/**/gradle-wrapper.jar
 **/android/.gradle
+**/android/build/outputs/flutter-apk
 **/android/captures/
 **/android/gradlew
 **/android/gradlew.bat

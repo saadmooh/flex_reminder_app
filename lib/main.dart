@@ -9,6 +9,7 @@ import 'package:flex_reminder/pages/save_post_screen.dart';
 import 'package:flex_reminder/pages/stats_screen.dart';
 import 'package:flex_reminder/pages/splash_screen.dart';
 import 'package:flex_reminder/globals.dart';
+import 'package:workmanager/workmanager.dart';
 import 'package:flex_reminder/utils/language_manager.dart';
 import 'package:flex_reminder/l10n/app_localizations.dart';
 import 'package:flex_reminder/pages/reset_password_screen.dart';
@@ -339,6 +340,12 @@ void _handleBackgroundNotificationClick(NotificationResponse response) {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  
+  // تهيئة WorkManager مع إعدادات محسنة
+  await Workmanager().initialize(
+    callbackDispatcher,
+    isInDebugMode: true,
+  );
   try {
     print('🚀 بدء تهيئة التطبيق...');
 

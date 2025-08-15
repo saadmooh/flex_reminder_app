@@ -10,66 +10,148 @@ import 'package:flex_reminder/models/reminder.dart';
 import 'package:flex_reminder/globals.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'package:url_launcher/url_launcher.dart'; // Add this import for URL launching
+import 'package:url_launcher/url_launcher.dart';
 
-// WorkManager task for handling background rescheduling
+// دالة للتعامل مع مهام WorkManager في الخلفية
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
+    print('🔄 WorkManager task executing: $task');
+
+    switch (task) {
+      case 'followUpNotification':
+        await _handleFollowUpNotification(inputData);
+        break;
+      default:
+        print('❌ Unknown task: $task');
+        return false;
+    }
+
+    return true;
+  });
+}
+
+// دالة للتعامل مع الإشعار التابع وإعادة جدولة المنشور
+@pragma('vm:entry-point')
+Future<void> _handleFollowUpNotification(
+    Map<String, dynamic>? inputData) async {
+  try {
+    if (inputData == null) {
+      print('❌ No input data provided for follow-up notification');
+      return;
+    }
+
+    final String title = inputData['title'] ?? 'تذكير متابعة';
+    final String body = inputData['body'] ?? 'هذا تذكير متابعة!';
+    final String reminderId = inputData['reminderId']?.toString() ?? '';
+    final String url = inputData['url'] ?? '';
+    final String importance = inputData['importance'] ?? '';
+
+    print('🔄 Processing follow-up for reminder: $reminderId');
+
+    // إرسال طلب reschedulePost إلى السيرفر
     try {
-      print('🚀 Starting WorkManager task: $task');
+      print('📡 Sending reschedulePost request to server...');
+      print('🔗 URL: $url');
+      print('⚡ Importance: $importance');
 
-      if (task == 'reschedule_reminder') {
-        final String postUrl = inputData?['postUrl'] ?? '';
-        final String importance = inputData?['importance'] ?? 'day';
-        final String title = inputData?['title'] ?? 'تذكير';
-        final int reminderId = inputData?['reminderId'] ?? 0;
+      final apiService = ApiService();
+      final Map<String, dynamic> rescheduleResult =
+          await apiService.reschedulePost(url, importance);
 
-        if (postUrl.isEmpty || reminderId == 0) {
-          print('❌ Missing data in WorkManager task');
-          return false;
-        }
+      print('✅ Successfully rescheduled post on server');
+      print('📅 Server response: $rescheduleResult');
 
-        print('🔄 Sending reschedule request for reminder $reminderId');
+      // التحقق من وجود وقت جديد في الاستجابة
+      if (rescheduleResult.containsKey('post') &&
+          rescheduleResult['post'].containsKey('next_reminder_time')) {
+        final String newReminderTime =
+            rescheduleResult['post']['next_reminder_time'];
+        print('🕐 New reminder time received: $newReminderTime');
 
-        final apiService = ApiService();
-        final Map<String, dynamic> resMap =
-            await apiService.reschedulePost(postUrl, importance);
+        // إرسال إشعار متابعة مع المعلومات المحدثة
+        // await AwesomeNotifications().createNotification(
+        //   content: NotificationContent(
+        //     id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+        //     channelKey: 'scheduled_channel',
+        //     title: '🔄 $title - تم إعادة الجدولة',
+        //     body: 'تم إعادة جدولة التذكير بنجاح للوقت التالي',
+        //     category: NotificationCategory.Reminder,
+        //     notificationLayout: NotificationLayout.Default,
+        //     payload: {
+        //       'id': reminderId,
+        //       'url': url,
+        //       'importance': importance,
+        //       'isFollowUp': 'true',
+        //       'rescheduled': 'true',
+        //       'newReminderTime': newReminderTime,
+        //     },
+        //     criticalAlert: true,
+        //     locked: true,
+        //   ),
+        // );
 
-        final String newScheduledTimeStr = resMap['post']['next_reminder_time'];
-        final DateTime newScheduledDate = DateTime.parse(newScheduledTimeStr);
-
-        print('📅 Received new scheduled time: $newScheduledDate');
-
-        final notificationService = NotificationService();
-        await notificationService.scheduleReminderNotification(
-          reminderId: reminderId,
-          title: title,
-          url: postUrl,
-          scheduledDate: newScheduledDate,
-          importance: importance,
-          additionalPayload: inputData?['additionalPayload'] ?? {},
+        print('📨 Follow-up notification sent with reschedule info');
+      } else {
+        // إرسال إشعار متابعة عادي في حالة عدم وجود وقت جديد
+        await AwesomeNotifications().createNotification(
+          content: NotificationContent(
+            id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+            channelKey: 'scheduled_channel',
+            title: '🔔 $title - متابعة',
+            body: body,
+            category: NotificationCategory.Reminder,
+            notificationLayout: NotificationLayout.Default,
+            payload: {
+              'id': reminderId,
+              'url': url,
+              'importance': importance,
+              'isFollowUp': 'true',
+            },
+            criticalAlert: true,
+            locked: true,
+          ),
         );
 
-        print('✅ Successfully rescheduled reminder $reminderId');
-        return true;
+        print('📨 Standard follow-up notification sent');
       }
+    } catch (apiError) {
+      print('❌ Error calling reschedulePost API: $apiError');
 
-      return false;
-    } catch (e) {
-      print('❌ Error in WorkManager task: $e');
-      return false;
+      // في حالة فشل الطلب، إرسال إشعار متابعة عادي
+      await AwesomeNotifications().createNotification(
+        content: NotificationContent(
+          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+          channelKey: 'scheduled_channel',
+          title: '⚠️ $title - خطأ في الجدولة',
+          body: 'لم يتم إعادة الجدولة بسبب خطأ في الاتصال',
+          category: NotificationCategory.Reminder,
+          notificationLayout: NotificationLayout.Default,
+          payload: {
+            'id': reminderId,
+            'url': url,
+            'importance': importance,
+            'isFollowUp': 'true',
+            'error': 'api_failed',
+          },
+          criticalAlert: true,
+          locked: true,
+        ),
+      );
+
+      print('📨 Error follow-up notification sent');
     }
-  });
+
+    print('✅ Follow-up processing completed for reminder: $reminderId');
+  } catch (e) {
+    print('❌ Error in follow-up notification handler: $e');
+  }
 }
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
-
   static NotificationService get instance => _instance;
-
   factory NotificationService() => _instance;
-
   NotificationService._internal();
 
   void _showSnackBar(String message, Color backgroundColor) {
@@ -96,7 +178,11 @@ class NotificationService {
   Future<void> init() async {
     tz.initializeTimeZones();
 
-    await Workmanager().initialize(callbackDispatcher, isInDebugMode: true);
+    // تهيئة WorkManager
+    await Workmanager().initialize(
+      callbackDispatcher,
+      isInDebugMode: false, // قم بتغييرها إلى false في الإنتاج
+    );
 
     await AwesomeNotifications().initialize(
       'resource://drawable/notification',
@@ -143,21 +229,8 @@ class NotificationService {
       ReceivedNotification receivedNotification) async {
     print(
         '📱 Notification displayed: ${receivedNotification.title} at ${DateTime.now()}');
-
     _instance._showSnackBar(
         '🔔 حان وقت التذكير: ${receivedNotification.title}', Colors.blue);
-
-    final payload = receivedNotification.payload ?? {};
-
-    final Map<String, String> cleanPayload = {};
-    payload.forEach((key, value) {
-      if (value != null) {
-        cleanPayload[key] = value;
-      }
-    });
-
-    await _instance._scheduleRescheduleTask(cleanPayload);
-
     print('🔔 Main reminder notification: ${receivedNotification.title}');
   }
 
@@ -177,20 +250,13 @@ class NotificationService {
     final String? url = payload['url'];
     final int? reminderId = int.tryParse(reminderIdStr);
 
-    // Check if URL exists and is valid, then attempt to launch it
     if (url != null && url.isNotEmpty) {
       final Uri? uri = Uri.tryParse(url);
       if (uri != null && await canLaunchUrl(uri)) {
         try {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
           print('🌐 Successfully launched URL: $url');
-
-          // Cancel rescheduling task since the user interacted with the notification
-          if (reminderId != null) {
-            await _instance._cancelRescheduleTask(reminderId);
-            print('✅ Canceled rescheduling task for reminder $reminderId');
-          }
-          return; // Exit after launching the URL
+          return;
         } catch (e) {
           print('❌ Error launching URL: $e');
           _instance._showSnackBar('خطأ في فتح الرابط: $url', Colors.red);
@@ -203,19 +269,14 @@ class NotificationService {
       print('⚠️ No URL provided in payload');
     }
 
-    // Fallback to existing navigation logic if URL is not available or fails
     if (reminderId != null) {
-      await _instance._cancelRescheduleTask(reminderId);
-
       final Map<String, dynamic> arguments = {
         'reminderId': reminderId,
       };
-
       navigatorKey.currentState?.pushNamed('/reminder', arguments: arguments);
       print('🔗 Navigated to reminder page with ID: $reminderId');
     } else {
       print('❌ Could not retrieve reminder ID from payload');
-
       final Reminder reminder = Reminder(
         id: receivedAction.id!,
         userId: 0,
@@ -237,55 +298,6 @@ class NotificationService {
         domain: payload['domain'] ?? '',
       );
       navigatorKey.currentState?.pushNamed('/reminder', arguments: reminder);
-    }
-  }
-
-  Future<void> _scheduleRescheduleTask(Map<String, String> payload) async {
-    try {
-      final String reminderIdStr = payload['id'] ?? '';
-      final int? reminderId = int.tryParse(reminderIdStr);
-
-      if (reminderId == null) {
-        print('❌ Cannot schedule rescheduling task: Missing reminder ID');
-        return;
-      }
-
-      final String postUrl = payload['url'] ?? '';
-      final String importance = payload['importance'] ?? 'day';
-      final String title = payload['title'] ?? 'تذكير';
-
-      if (postUrl.isEmpty) {
-        print('❌ Cannot schedule rescheduling task: Missing URL');
-        return;
-      }
-
-      print('⏰ Scheduling rescheduling task for reminder $reminderId');
-
-      await Workmanager().registerOneOffTask(
-        'reschedule_$reminderId',
-        'reschedule_reminder',
-        initialDelay: const Duration(minutes: 1),
-        inputData: {
-          'reminderId': reminderId,
-          'postUrl': postUrl,
-          'importance': importance,
-          'title': title,
-          'additionalPayload': Map<String, String>.from(payload),
-        },
-      );
-
-      print('✅ Scheduled rescheduling task for reminder $reminderId');
-    } catch (e) {
-      print('❌ Error scheduling rescheduling task: $e');
-    }
-  }
-
-  Future<void> _cancelRescheduleTask(int reminderId) async {
-    try {
-      await Workmanager().cancelByUniqueName('reschedule_$reminderId');
-      print('✅ Canceled rescheduling task for reminder $reminderId');
-    } catch (e) {
-      print('❌ Error canceling rescheduling task: $e');
     }
   }
 
@@ -349,9 +361,90 @@ class NotificationService {
 
     if (scheduled) {
       print('✅ Successfully scheduled reminder $reminderId');
+
+      // جدولة إشعار المتابعة باستخدام WorkManager بعد 30 ثانية
+      await _scheduleFollowUpNotification(
+        reminderId: reminderId,
+        title: title,
+        url: url,
+        importance: importance,
+        scheduledDate: scheduledDate,
+      );
     } else {
       print('❌ Failed to schedule reminder $reminderId');
     }
+  }
+
+  // دالة جديدة لجدولة إشعار المتابعة وطلب إعادة الجدولة
+  Future<void> _scheduleFollowUpNotification({
+    required int reminderId,
+    required String title,
+    required String url,
+    required String importance,
+    required DateTime scheduledDate,
+  }) async {
+    try {
+      final String taskName = 'followUpNotification_$reminderId';
+
+      // حساب التأخير: 30 ثانية بعد وقت الإشعار الأساسي
+      final DateTime followUpTime =
+          scheduledDate.add(const Duration(seconds: 30));
+      final Duration delay = followUpTime.difference(DateTime.now());
+
+      if (delay.isNegative) {
+        print('❌ Follow-up time would be in the past, skipping');
+        return;
+      }
+
+      print('📅 Scheduling follow-up task for: $followUpTime');
+      print('⏱️ Delay from now: ${delay.inSeconds} seconds');
+
+      await Workmanager().registerOneOffTask(
+        taskName,
+        'followUpNotification',
+        initialDelay: delay,
+        inputData: {
+          'reminderId': reminderId,
+          'title': title,
+          'body': 'سيتم إعادة جدولة هذا التذكير تلقائياً',
+          'url': url,
+          'importance': importance,
+          'scheduledTime': scheduledDate.toIso8601String(),
+        },
+        constraints: Constraints(
+          networkType: NetworkType.connected, // يتطلب اتصال بالإنترنت لطلب API
+          requiresBatteryNotLow: false,
+          requiresCharging: false,
+          requiresDeviceIdle: false,
+          requiresStorageNotLow: false,
+        ),
+      );
+
+      // حفظ معلومات المهمة للإلغاء لاحقاً إذا لزم الأمر
+      await _saveFollowUpTask(reminderId, taskName);
+
+      print('✅ Scheduled follow-up with API call for reminder $reminderId');
+      print('🌐 API reschedule will be called at: $followUpTime');
+    } catch (e) {
+      print('❌ Error scheduling follow-up notification: $e');
+    }
+  }
+
+  // حفظ معلومات مهام المتابعة
+  Future<void> _saveFollowUpTask(int reminderId, String taskName) async {
+    final prefs = await SharedPreferences.getInstance();
+    final Map<String, String> followUpTasks = await _getFollowUpTasks();
+    followUpTasks[reminderId.toString()] = taskName;
+    await prefs.setString('follow_up_tasks', jsonEncode(followUpTasks));
+  }
+
+  // الحصول على معلومات مهام المتابعة
+  Future<Map<String, String>> _getFollowUpTasks() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? tasksString = prefs.getString('follow_up_tasks');
+    if (tasksString == null) return {};
+    final Map<String, dynamic> decoded = jsonDecode(tasksString);
+    return decoded.cast<String, String>();
   }
 
   Future<bool> _scheduleNotification({
@@ -451,6 +544,7 @@ class NotificationService {
   Future<void> cancelReminderNotifications(int reminderId) async {
     print('🗑️ Canceling all operations for reminder $reminderId');
 
+    // إلغاء الإشعارات العادية
     final notificationMap = await _getNotificationMap();
     final notificationIds = notificationMap[reminderId] ?? [];
 
@@ -459,12 +553,33 @@ class NotificationService {
       await AwesomeNotifications().cancel(id);
     }
 
-    await _cancelRescheduleTask(reminderId);
-
     notificationMap.remove(reminderId);
     await _saveNotificationMap(notificationMap);
 
+    // إلغاء مهام المتابعة
+    await _cancelFollowUpTask(reminderId);
+
     print('✅ Successfully canceled all operations for reminder $reminderId');
+  }
+
+  // إلغاء مهمة المتابعة
+  Future<void> _cancelFollowUpTask(int reminderId) async {
+    try {
+      final Map<String, String> followUpTasks = await _getFollowUpTasks();
+      final String? taskName = followUpTasks[reminderId.toString()];
+
+      if (taskName != null) {
+        await Workmanager().cancelByUniqueName(taskName);
+        followUpTasks.remove(reminderId.toString());
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('follow_up_tasks', jsonEncode(followUpTasks));
+
+        print('✅ Canceled follow-up task: $taskName');
+      }
+    } catch (e) {
+      print('❌ Error canceling follow-up task: $e');
+    }
   }
 
   Future<void> updateReminderNotifications(
@@ -583,16 +698,16 @@ class NotificationService {
   }
 
   Future<void> cancelAllNotifications() async {
-    print('🧹 Canceling all notifications and WorkManager tasks');
+    print('🧹 Canceling all notifications and tasks');
 
     await AwesomeNotifications().cancelAll();
-
     await Workmanager().cancelAll();
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('notification_map');
+    await prefs.remove('follow_up_tasks');
 
-    print('✅ Successfully canceled all notifications and WorkManager tasks');
+    print('✅ Successfully canceled all notifications and tasks');
   }
 
   Future<bool> checkPermissions() async {
@@ -624,15 +739,17 @@ class NotificationService {
   void printStatus() {
     print('📊 === Notification Service Status ===');
     print('🔔 Notification service active');
-    print('⚙️ WorkManager initialized for background tasks');
+    print('⚙️ WorkManager integration enabled');
+    print('🌐 API reschedule calls enabled');
     print('================================');
   }
 
   Future<Map<String, dynamic>> getServiceStatus() async {
     final notificationMap = await _getNotificationMap();
+    final followUpTasks = await _getFollowUpTasks();
     return {
       'activeReminders': notificationMap.length,
-      'workmanagerEnabled': true,
+      'scheduledFollowUps': followUpTasks.length,
     };
   }
 
@@ -666,6 +783,7 @@ class NotificationService {
 
   void dispose() {
     print('🧹 Cleaning up notification service...');
+    Workmanager().cancelAll();
     print('✅ All resources cleaned up');
   }
 

@@ -4,13 +4,12 @@ import 'package:flex_reminder/services/api_service.dart';
 import 'package:flex_reminder/utils/language_manager.dart';
 import 'package:flex_reminder/l10n/app_localizations.dart';
 import 'package:flex_reminder/pages/subscription_management_screen.dart';
-import 'package:flex_reminder/providers/reminders_notifier.dart'; // إضافة استيراد RemindersNotifier
+import 'package:flex_reminder/providers/reminders_notifier.dart';
 
 class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String? title;
   final bool showSearch;
-  final Function(String)? onSearchChanged; // Callback for text changes
-  final VoidCallback? onSearchPressed; // New callback for search action
+  final VoidCallback? onSearchPressed; // Search button callback
   final bool showSettings;
   final bool showLeading;
   final List<Widget>? actions;
@@ -19,7 +18,6 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
     super.key,
     this.title,
     this.showSearch = false,
-    this.onSearchChanged,
     this.onSearchPressed,
     this.showSettings = true,
     this.showLeading = true,
@@ -27,17 +25,14 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(100);
+  Size get preferredSize => const Size.fromHeight(60); // Reduced height since no search input
 
   @override
   Widget build(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
-    final languageManager =
-        Provider.of<LanguageManager>(context, listen: false);
-    final remindersNotifier = Provider.of<RemindersNotifier>(context,
-        listen: false); // إضافة RemindersNotifier
+    final languageManager = Provider.of<LanguageManager>(context, listen: false);
+    final remindersNotifier = Provider.of<RemindersNotifier>(context, listen: false);
     final isArabic = languageManager.locale.languageCode == 'ar';
-    final isChinese = languageManager.locale.languageCode == 'zh';
     final currentRoute = ModalRoute.of(context)?.settings.name;
 
     // Remove back button entirely on /reminders regardless of showLeading
@@ -60,81 +55,28 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
                 },
               )
             : null,
-        title: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (showSearch)
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 8.0),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: const Color(0xFFD3D3D3), width: 1),
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.2),
-                      spreadRadius: 1,
-                      blurRadius: 3,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.search,
-                      color: Colors.grey[600],
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8.0),
-                    Expanded(
-                      child: TextField(
-                        textDirection:
-                            isArabic ? TextDirection.rtl : TextDirection.ltr,
-                        style: const TextStyle(
-                            color: Color(0xff050505), fontSize: 16),
-                        onChanged: onSearchChanged,
-                        decoration: InputDecoration(
-                          hintText: localizations.searchPosts,
-                          hintStyle: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 16,
-                              fontFamily: 'Inter'),
-                          border: InputBorder.none,
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 10.0),
-                          suffixIcon: onSearchPressed != null
-                              ? IconButton(
-                                  icon: const Icon(Icons.search,
-                                      color: Color(0xff707070), size: 20),
-                                  onPressed: onSearchPressed,
-                                )
-                              : (onSearchChanged != null
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear,
-                                          color: Color(0xff707070), size: 20),
-                                      onPressed: () {
-                                        if (onSearchChanged != null) {
-                                          onSearchChanged!('');
-                                        }
-                                      },
-                                    )
-                                  : null),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            if (!showSearch && title != null)
-              Text(
+        title: title != null
+            ? Text(
                 title!,
-                style: const TextStyle(color: Colors.black, fontSize: 20),
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
                 textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
-              ),
-          ],
-        ),
+              )
+            : null,
+        centerTitle: true,
         actions: [
+          // Search button
+          if (showSearch && onSearchPressed != null)
+            IconButton(
+              icon: const Icon(Icons.search, color: Colors.black),
+              onPressed: onSearchPressed,
+              tooltip: localizations.searchReminders,
+            ),
+          
+          // Language selector
           PopupMenuButton<String>(
             color: Colors.white,
             icon: const Icon(Icons.language, color: Colors.black),
@@ -148,7 +90,7 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
                 } else if (value == 'zh') {
                   languageManager.setLocale(const Locale('zh'));
                 }
-                // إعادة جلب التذكيرات من السيرفر
+                // Refresh reminders from server
                 await remindersNotifier.forceRefreshReminders();
                 final currentRoute = ModalRoute.of(context)?.settings.name;
                 if (currentRoute != null) {
@@ -171,8 +113,7 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
                 child: Text(
                   'English',
                   style: const TextStyle(color: Colors.black),
-                  textDirection:
-                      isArabic ? TextDirection.rtl : TextDirection.ltr,
+                  textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
                 ),
               ),
               PopupMenuItem(
@@ -180,8 +121,7 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
                 child: Text(
                   'العربية',
                   style: const TextStyle(color: Colors.black),
-                  textDirection:
-                      isArabic ? TextDirection.rtl : TextDirection.ltr,
+                  textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
                 ),
               ),
               const PopupMenuItem(
@@ -194,6 +134,8 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
               ),
             ],
           ),
+          
+          // Settings menu
           if (showSettings)
             PopupMenuButton<String>(
               color: Colors.white,
@@ -212,8 +154,7 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
                   print('Navigation error: $e');
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content:
-                          Text(localizations.navigationFailed(e.toString())),
+                      content: Text(localizations.navigationFailed(e.toString())),
                     ),
                   );
                 }
@@ -228,8 +169,7 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
                       child: Text(
                         localizations.subscriptionManagement,
                         style: const TextStyle(color: Colors.black),
-                        textDirection:
-                            isArabic ? TextDirection.rtl : TextDirection.ltr,
+                        textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
                       ),
                     ),
                   PopupMenuItem(
@@ -237,8 +177,7 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
                     child: Text(
                       localizations.notificationSettings,
                       style: const TextStyle(color: Colors.black),
-                      textDirection:
-                          isArabic ? TextDirection.rtl : TextDirection.ltr,
+                      textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
                     ),
                   ),
                   PopupMenuItem(
@@ -246,13 +185,14 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
                     child: Text(
                       localizations.logout,
                       style: const TextStyle(color: Colors.black),
-                      textDirection:
-                          isArabic ? TextDirection.rtl : TextDirection.ltr,
+                      textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
                     ),
                   ),
                 ];
               },
             ),
+          
+          // Additional actions
           if (actions != null) ...actions!,
         ],
       ),

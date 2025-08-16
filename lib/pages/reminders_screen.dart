@@ -17,13 +17,24 @@ import 'package:flex_reminder/l10n/app_localizations.dart';
 import 'package:flex_reminder/utils/language_manager.dart';
 import 'package:flex_reminder/providers/reminders_notifier.dart';
 
+// ==============================================================================
+// نافذة البحث المحسنة مع الخلفية الشفافة
+// ==============================================================================
+
 class _ReminderSearchDelegate extends SearchDelegate<String> {
   final String initialQuery;
   final ValueChanged<String> onQueryChanged;
   final AppLocalizations appLocalizations;
+  final bool isArabic;
 
   _ReminderSearchDelegate(
-      this.initialQuery, this.onQueryChanged, this.appLocalizations);
+    this.initialQuery,
+    this.onQueryChanged,
+    this.appLocalizations,
+    this.isArabic,
+  ) {
+    query = initialQuery;
+  }
 
   @override
   List<Widget> buildActions(BuildContext context) {
@@ -33,7 +44,6 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
         onPressed: () {
           query = '';
           onQueryChanged('');
-          close(context, '');
         },
       ),
     ];
@@ -41,10 +51,6 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
 
   @override
   Widget buildLeading(BuildContext context) {
-    final isArabic = Provider.of<LanguageManager>(context, listen: false)
-            .locale
-            .languageCode ==
-        'ar';
     return IconButton(
       icon: Icon(
         isArabic ? Icons.chevron_right : Icons.chevron_left,
@@ -56,37 +62,524 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
 
   @override
   Widget buildResults(BuildContext context) {
+    // تحديث الاستعلام والانتقال للنتائج فوراً
     onQueryChanged(query);
-    return Container(color: Colors.white);
+    return _buildSearchResults(context);
   }
 
   @override
   Widget buildSuggestions(BuildContext context) {
-    onQueryChanged(query);
-    return Container(color: Colors.white);
+    // تحديث الاستعلام في الوقت الفعلي
+    if (query != initialQuery) {
+      onQueryChanged(query);
+    }
+    return _buildSearchResults(context);
+  }
+
+  Widget _buildSearchResults(BuildContext context) {
+    return Consumer<RemindersNotifier>(
+      builder: (context, remindersNotifier, child) {
+        final filteredReminders = ReminderFilterLogic.getFilteredReminders(
+          reminders: [
+            ...remindersNotifier.readReminders,
+            ...remindersNotifier.unreadReminders
+          ],
+          searchQuery: query,
+        );
+
+        return Container(
+          color: const Color.fromARGB(0, 255, 255, 255), // خلفية شفافة
+          child: Column(
+            children: [
+              // عداد النتائج مع خلفية شفافة
+              if (query.isNotEmpty) ...[
+                Container(
+                  color: Colors.black.withOpacity(0.8), // خلفية داكنة شبه شفافة
+                  margin: const EdgeInsets.all(8.0),
+                  padding: const EdgeInsets.all(16.0),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.search, color: Colors.white.withOpacity(0.8)),
+                      const SizedBox(width: 8),
+                      Text(
+                        isArabic
+                            ? 'نتائج البحث: ${filteredReminders.length}'
+                            : 'Search Results: ${filteredReminders.length}',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              // النتائج
+              Expanded(
+                child: filteredReminders.isEmpty
+                    ? _buildEmptyState(context)
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(8),
+                        itemCount: filteredReminders.length,
+                        itemBuilder: (context, index) {
+                          final reminder = filteredReminders[index];
+                          return _buildSearchResultCard(context, reminder);
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.8), // خلفية داكنة شبه شفافة
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withOpacity(0.3)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              query.isEmpty ? Icons.search : Icons.search_off,
+              size: 64,
+              color: Colors.white.withOpacity(0.7),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              query.isEmpty
+                  ? (isArabic
+                      ? 'ابدأ بكتابة كلمات البحث'
+                      : 'Start typing to search')
+                  : (isArabic
+                      ? 'لا توجد نتائج للبحث "$query"'
+                      : 'No results found for "$query"'),
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.9),
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (query.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text(
+                isArabic
+                    ? 'جرب البحث بكلمات مختلفة أو تحقق من الإملاء'
+                    : 'Try different keywords or check spelling',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.6),
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchResultCard(BuildContext context, Reminder reminder) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.85), // خلفية داكنة شبه شفافة
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            close(context, reminder.title);
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ReminderDetailScreen(
+                  reminderId: reminder.id,
+                ),
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                // صورة التذكير أو أيقونة افتراضية
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color: Colors.white.withOpacity(0.1),
+                    border: Border.all(color: Colors.white.withOpacity(0.3)),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: reminder.imageUrl != null &&
+                            reminder.imageUrl!.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: reminder.imageUrl!,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(
+                              color: Colors.white.withOpacity(0.1),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  color: Colors.white.withOpacity(0.8),
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              color: Colors.white.withOpacity(0.1),
+                              child: Icon(
+                                Icons.image,
+                                color: Colors.white.withOpacity(0.6),
+                                size: 24,
+                              ),
+                            ),
+                          )
+                        : Container(
+                            color: Colors.white.withOpacity(0.1),
+                            child: Icon(
+                              Icons.article_outlined,
+                              color: Colors.white.withOpacity(0.6),
+                              size: 24,
+                            ),
+                          ),
+                  ),
+                ),
+
+                const SizedBox(width: 16),
+
+                // معلومات التذكير
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // العنوان
+                      Text(
+                        reminder.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white.withOpacity(0.95),
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      // التصنيفات
+                      if (reminder.category != null ||
+                          reminder.domain != null) ...[
+                        Row(
+                          children: [
+                            if (reminder.category != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                      color: Colors.blue.withOpacity(0.5)),
+                                ),
+                                child: Text(
+                                  reminder.category!,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.blue.shade200,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            if (reminder.category != null &&
+                                reminder.domain != null)
+                              const SizedBox(width: 6),
+                            if (reminder.domain != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                      color: Colors.green.withOpacity(0.5)),
+                                ),
+                                child: Text(
+                                  reminder.domain!,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.green.shade200,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+
+                      // حالة التذكير والوقت
+                      Row(
+                        children: [
+                          // حالة القراءة
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: reminder.isOpened == 1
+                                  ? Colors.green.withOpacity(0.3)
+                                  : Colors.orange.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: reminder.isOpened == 1
+                                    ? Colors.green.withOpacity(0.5)
+                                    : Colors.orange.withOpacity(0.5),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  reminder.isOpened == 1
+                                      ? Icons.check_circle
+                                      : Icons.schedule,
+                                  size: 12,
+                                  color: reminder.isOpened == 1
+                                      ? Colors.green.shade200
+                                      : Colors.orange.shade200,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  reminder.isOpened == 1
+                                      ? (isArabic ? 'مقروء' : 'Read')
+                                      : (isArabic ? 'غير مقروء' : 'Unread'),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: reminder.isOpened == 1
+                                        ? Colors.green.shade200
+                                        : Colors.orange.shade200,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const Spacer(),
+
+                          // وقت التذكير القادم إذا كان متوفراً
+                          if (reminder.nextReminderTime != null &&
+                              reminder.nextReminderTime!.isNotEmpty)
+                            Text(
+                              reminder.nextReminderTime!,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.white.withOpacity(0.6),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // سهم للانتقال
+                Icon(
+                  isArabic ? Icons.chevron_left : Icons.chevron_right,
+                  color: Colors.white.withOpacity(0.5),
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   String get searchFieldLabel =>
       appLocalizations.searchReminders ??
-      'البحث في التذكيرات (العنوان أو الرقم)...';
+      (isArabic ? 'البحث في التذكيرات...' : 'Search reminders...');
 
   @override
   ThemeData appBarTheme(BuildContext context) {
     return Theme.of(context).copyWith(
-      primaryColor: Colors.white,
-      scaffoldBackgroundColor: Colors.white,
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.white,
-        iconTheme: IconThemeData(color: Colors.black),
-        titleTextStyle: TextStyle(color: Colors.black, fontSize: 20),
+      primaryColor: Colors.transparent,
+      scaffoldBackgroundColor: Colors.transparent,
+      appBarTheme: AppBarTheme(
+        backgroundColor: Colors.black.withOpacity(0.9), // خلفية داكنة شبه شفافة
+        iconTheme: const IconThemeData(color: Colors.white),
+        titleTextStyle: const TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.w500,
+        ),
+        elevation: 0,
       ),
-      inputDecorationTheme: const InputDecorationTheme(
-        hintStyle: TextStyle(color: Colors.grey),
+      inputDecorationTheme: InputDecorationTheme(
+        hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
         border: InputBorder.none,
+        filled: false,
+      ),
+      textTheme: Theme.of(context).textTheme.copyWith(
+            titleLarge: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+    );
+  }
+}
+
+// ==============================================================================
+// منطق تصفية التذكيرات
+// ==============================================================================
+
+class ReminderFilterLogic {
+  static List<Reminder> getFilteredReminders({
+    required List<Reminder> reminders,
+    required String searchQuery,
+    String? selectedCategory,
+    String? selectedComplexity,
+    String? selectedDomain,
+  }) {
+    List<Reminder> filtered = List.from(reminders);
+
+    filtered.sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
+
+    if (searchQuery.isNotEmpty) {
+      filtered = filtered
+          .where((reminder) => _matchesSearchQuery(reminder, searchQuery))
+          .toList();
+    }
+
+    if (selectedCategory != null &&
+        selectedCategory != 'All' &&
+        selectedCategory != 'الكل') {
+      filtered = filtered
+          .where((reminder) => reminder.category == selectedCategory)
+          .toList();
+    }
+
+    if (selectedComplexity != null &&
+        selectedComplexity != 'All' &&
+        selectedComplexity != 'الكل') {
+      filtered = filtered
+          .where((reminder) => reminder.complexity == selectedComplexity)
+          .toList();
+    }
+
+    if (selectedDomain != null &&
+        selectedDomain != 'All' &&
+        selectedDomain != 'الكل') {
+      filtered = filtered
+          .where((reminder) => reminder.domain == selectedDomain)
+          .toList();
+    }
+
+    return filtered;
+  }
+
+  static bool _matchesSearchQuery(Reminder reminder, String searchQuery) {
+    final query = searchQuery.toLowerCase().trim();
+
+    if (query.isEmpty) return true;
+
+    if (reminder.title.toLowerCase().contains(query)) {
+      return true;
+    }
+
+    if (reminder.id.toString().contains(query)) {
+      return true;
+    }
+
+    if (reminder.content != null &&
+        reminder.content!.toLowerCase().contains(query)) {
+      return true;
+    }
+
+    if (reminder.category != null &&
+        reminder.category!.toLowerCase().contains(query)) {
+      return true;
+    }
+
+    return false;
+  }
+}
+// ==============================================================================
+// 2. منطق البحث المُصحح
+// ==============================================================================
+
+mixin SearchLogicMixin<T extends StatefulWidget> on State<T> {
+  String _searchQuery = '';
+
+  String get searchQuery => _searchQuery;
+
+  void showSearchInterface(BuildContext context) {
+    final isArabic = Provider.of<LanguageManager>(context, listen: false)
+            .locale
+            .languageCode ==
+        'ar';
+
+    showSearch(
+      context: context,
+      delegate: _ReminderSearchDelegate(
+        _searchQuery,
+        (newQuery) {
+          updateSearchQuery(newQuery);
+        },
+        AppLocalizations.of(context)!,
+        isArabic,
       ),
     );
   }
+
+  void updateSearchQuery(String newQuery) {
+    if (_searchQuery != newQuery) {
+      setState(() {
+        _searchQuery = newQuery;
+      });
+      onSearchQueryChanged(newQuery);
+    }
+  }
+
+  void onSearchQueryChanged(String query) {
+    // يمكن للشاشات تنفيذ هذه الدالة لتحديث البيانات
+  }
+
+  void clearSearch() {
+    updateSearchQuery('');
+  }
+
+  bool get hasActiveSearch => _searchQuery.isNotEmpty;
 }
 
 class RemindersScreen extends StatefulWidget {
@@ -143,7 +636,7 @@ class _RemindersScreenState extends State<RemindersScreen>
       },
     );
   }
-  
+
   void _showSnackBar(String message, Color backgroundColor) {
     if (navigatorKey?.currentContext != null) {
       final scaffoldMessenger =
@@ -190,7 +683,9 @@ class _RemindersScreenState extends State<RemindersScreen>
     setState() {
       _isOnline = connectivityResults
           .any((result) => result != ConnectivityResult.none);
-    };
+    }
+
+    ;
 
     if (!wasOnline && _isOnline && mounted) {
       print('🌐 الاتصال عاد، تحديث البيانات...');
@@ -222,7 +717,8 @@ class _RemindersScreenState extends State<RemindersScreen>
   }
 
   void _initializeReminders() async {
-    final remindersNotifier = Provider.of<RemindersNotifier>(context, listen: false);
+    final remindersNotifier =
+        Provider.of<RemindersNotifier>(context, listen: false);
     _safeShowMessage('🔄 بدء تهيئة التذكيرات في RemindersScreen');
 
     try {
@@ -256,7 +752,8 @@ class _RemindersScreenState extends State<RemindersScreen>
     if (!_isOnline) return;
 
     print('🔄 تحديث البيانات بعد عودة الاتصال...');
-    final remindersNotifier = Provider.of<RemindersNotifier>(context, listen: false);
+    final remindersNotifier =
+        Provider.of<RemindersNotifier>(context, listen: false);
 
     try {
       await remindersNotifier.initializeImproved(forceRefresh: true);
@@ -467,6 +964,11 @@ class _RemindersScreenState extends State<RemindersScreen>
 
   void _showSearch() {
     print('عرض شريط البحث');
+    final isArabic = Provider.of<LanguageManager>(context, listen: false)
+            .locale
+            .languageCode ==
+        'ar';
+
     showSearch(
       context: context,
       delegate: _ReminderSearchDelegate(
@@ -478,6 +980,7 @@ class _RemindersScreenState extends State<RemindersScreen>
           });
         },
         AppLocalizations.of(context)!,
+        isArabic, // إضافة هذا المعامل المفقود
       ),
     );
   }

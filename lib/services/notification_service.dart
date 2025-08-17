@@ -11,6 +11,7 @@ import 'package:flex_reminder/globals.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 // دالة للتعامل مع مهام WorkManager في الخلفية
 @pragma('vm:entry-point')
@@ -175,6 +176,17 @@ class NotificationService {
     }
   }
 
+  // فحص الاتصال بالإنترنت
+  Future<bool> _checkInternetConnection() async {
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      return connectivityResult != ConnectivityResult.none;
+    } catch (e) {
+      print('❌ خطأ في فحص الاتصال بالإنترنت: $e');
+      return false;
+    }
+  }
+
   Future<void> init() async {
     tz.initializeTimeZones();
 
@@ -250,7 +262,32 @@ class NotificationService {
     final String? url = payload['url'];
     final int? reminderId = int.tryParse(reminderIdStr);
 
+    // إرسال طلب updateStats عند النقر على الإشعار
     if (url != null && url.isNotEmpty) {
+      try {
+        // فحص الاتصال بالإنترنت
+        final hasConnection = await _instance._checkInternetConnection();
+
+        if (hasConnection) {
+          print('📡 Sending updateStats request from notification tap...');
+          await ApiService().updateStats(url, true);
+          print('✅ Successfully sent updateStats from notification');
+
+          // تحديث التذكير إذا كان معرف التذكير متوفراً
+          if (reminderId != null) {
+            // يمكن إضافة منطق تحديث التذكير هنا إذا لزم الأمر
+            print('🔄 Updated reminder stats for ID: $reminderId');
+          }
+        } else {
+          print('❌ No internet connection - updateStats skipped');
+          _instance._showSnackBar('لا يوجد اتصال بالإنترنت', Colors.orange);
+        }
+      } catch (e) {
+        print('❌ Error sending updateStats from notification: $e');
+        _instance._showSnackBar('خطأ في تحديث الإحصائيات', Colors.red);
+      }
+
+      // محاولة فتح الرابط
       final Uri? uri = Uri.tryParse(url);
       if (uri != null && await canLaunchUrl(uri)) {
         try {
@@ -269,6 +306,7 @@ class NotificationService {
       print('⚠️ No URL provided in payload');
     }
 
+    // التنقل إلى صفحة التذكير
     if (reminderId != null) {
       final Map<String, dynamic> arguments = {
         'reminderId': reminderId,

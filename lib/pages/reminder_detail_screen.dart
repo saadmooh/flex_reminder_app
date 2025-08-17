@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flex_reminder/l10n/app_localizations.dart';
 import 'package:flex_reminder/providers/reminders_notifier.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class ReminderDetailScreen extends StatefulWidget {
   final int reminderId;
@@ -30,6 +31,16 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadReminder();
     });
+  }
+
+  Future<bool> _checkInternetConnection() async {
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      return connectivityResult != ConnectivityResult.none;
+    } catch (e) {
+      print('خطأ في فحص الاتصال بالإنترنت: $e');
+      return false;
+    }
   }
 
   Future<void> _loadReminder() async {
@@ -311,13 +322,29 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                       : () async {
                           setState(() => _isLoadingLink = true);
                           try {
-                            await ApiService()
-                                .updateStats(_reminder!.url!, true);
-                            final remindersNotifier =
-                                Provider.of<RemindersNotifier>(context,
-                                    listen: false);
-                            await remindersNotifier
-                                .updateSingleReminder(_reminder!.id);
+                            // فحص الاتصال بالإنترنت
+                            final hasConnection = await _checkInternetConnection();
+                            
+                            if (hasConnection) {
+                              // إرسال طلب updateStats فقط في حال وجود اتصال بالإنترنت
+                              await ApiService()
+                                  .updateStats(_reminder!.url!, true);
+                              final remindersNotifier =
+                                  Provider.of<RemindersNotifier>(context,
+                                      listen: false);
+                              await remindersNotifier
+                                  .updateSingleReminder(_reminder!.id);
+                            } else {
+                              // عرض رسالة تحذيرية في حال عدم وجود اتصال بالإنترنت
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('لا يوجد اتصال بالإنترنت. سيتم فتح الرابط فقط.'),
+                                  backgroundColor: Colors.orange,
+                                ),
+                              );
+                            }
+                            
+                            // محاولة فتح الرابط (يعمل حتى بدون إنترنت للتطبيقات المحلية)
                             if (!await launchUrlString(_reminder!.url!)) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(

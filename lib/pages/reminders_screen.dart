@@ -18,7 +18,7 @@ import 'package:flex_reminder/utils/language_manager.dart';
 import 'package:flex_reminder/providers/reminders_notifier.dart';
 
 // ==============================================================================
-// نافذة البحث المحسنة مع الخلفية الشفافة
+// نافذة البحث المحسنة مع الخلفية البيضاء
 // ==============================================================================
 
 class _ReminderSearchDelegate extends SearchDelegate<String> {
@@ -88,29 +88,31 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
         );
 
         return Container(
-          color: const Color.fromARGB(0, 255, 255, 255), // خلفية شفافة
+          color: Colors.white, // تغيير من شفاف إلى أبيض
           child: Column(
             children: [
-              // عداد النتائج مع خلفية شفافة
+              // عداد النتائج - غير الخلفية إلى بيضاء
               if (query.isNotEmpty) ...[
                 Container(
-                  color: Colors.black.withOpacity(0.8), // خلفية داكنة شبه شفافة
+                  color: Colors.white, // تغيير من أسود شفاف إلى أبيض
                   margin: const EdgeInsets.all(8.0),
                   padding: const EdgeInsets.all(16.0),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white.withOpacity(0.3)),
+                    border: Border.all(
+                        color:
+                            Colors.black.withOpacity(0.3)), // حدود سوداء فاتحة
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.search, color: Colors.white.withOpacity(0.8)),
+                      Icon(Icons.search, color: Colors.black), // أيقونة سوداء
                       const SizedBox(width: 8),
                       Text(
                         isArabic
                             ? 'نتائج البحث: ${filteredReminders.length}'
                             : 'Search Results: ${filteredReminders.length}',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
+                          color: Colors.black, // نص أسود
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
                         ),
@@ -119,8 +121,7 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
                   ),
                 ),
               ],
-
-              // النتائج
+              // باقي الكود يبقى كما هو...
               Expanded(
                 child: filteredReminders.isEmpty
                     ? _buildEmptyState(context)
@@ -146,9 +147,10 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
         margin: const EdgeInsets.all(32),
         padding: const EdgeInsets.all(32),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.8), // خلفية داكنة شبه شفافة
+          color: Colors.white, // تغيير من أسود شفاف إلى أبيض
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withOpacity(0.3)),
+          border: Border.all(
+              color: Colors.black.withOpacity(0.3)), // حدود سوداء فاتحة
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -156,7 +158,7 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
             Icon(
               query.isEmpty ? Icons.search : Icons.search_off,
               size: 64,
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.black.withOpacity(0.7), // أيقونة سوداء
             ),
             const SizedBox(height: 16),
             Text(
@@ -168,7 +170,7 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
                       ? 'لا توجد نتائج للبحث "$query"'
                       : 'No results found for "$query"'),
               style: TextStyle(
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.black, // نص أسود
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
               ),
@@ -181,7 +183,7 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
                     ? 'جرب البحث بكلمات مختلفة أو تحقق من الإملاء'
                     : 'Try different keywords or check spelling',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.6),
+                  color: Colors.black.withOpacity(0.6), // نص أسود فاتح
                   fontSize: 14,
                 ),
                 textAlign: TextAlign.center,
@@ -197,12 +199,13 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.85), // خلفية داكنة شبه شفافة
+        color: Colors.white, // تغيير من أسود شفاف إلى أبيض
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.2)),
+        border: Border.all(
+            color: Colors.black.withOpacity(0.2)), // حدود سوداء فاتحة
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.grey.withOpacity(0.3), // ظل رمادي بدلاً من أسود
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -227,14 +230,14 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                // صورة التذكير أو أيقونة افتراضية
+                // صورة التذكير - غير الخلفية
                 Container(
                   width: 60,
                   height: 60,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
-                    color: Colors.white.withOpacity(0.1),
-                    border: Border.all(color: Colors.white.withOpacity(0.3)),
+                    color: Colors.grey.withOpacity(0.1), // خلفية رمادية فاتحة
+                    border: Border.all(color: Colors.black.withOpacity(0.3)),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(10),
@@ -244,28 +247,28 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
                             imageUrl: reminder.imageUrl!,
                             fit: BoxFit.cover,
                             placeholder: (context, url) => Container(
-                              color: Colors.white.withOpacity(0.1),
+                              color: Colors.grey.withOpacity(0.1),
                               child: Center(
                                 child: CircularProgressIndicator(
-                                  color: Colors.white.withOpacity(0.8),
+                                  color: Colors.black, // لودر أسود
                                   strokeWidth: 2,
                                 ),
                               ),
                             ),
                             errorWidget: (context, url, error) => Container(
-                              color: Colors.white.withOpacity(0.1),
+                              color: Colors.grey.withOpacity(0.1),
                               child: Icon(
                                 Icons.image,
-                                color: Colors.white.withOpacity(0.6),
+                                color: Colors.black.withOpacity(0.6),
                                 size: 24,
                               ),
                             ),
                           )
                         : Container(
-                            color: Colors.white.withOpacity(0.1),
+                            color: Colors.grey.withOpacity(0.1),
                             child: Icon(
                               Icons.article_outlined,
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.black.withOpacity(0.6),
                               size: 24,
                             ),
                           ),
@@ -274,7 +277,7 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
 
                 const SizedBox(width: 16),
 
-                // معلومات التذكير
+                // معلومات التذكير - غير ألوان النصوص
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -287,13 +290,13 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white.withOpacity(0.95),
+                          color: Colors.black, // نص أسود
                         ),
                       ),
 
                       const SizedBox(height: 8),
 
-                      // التصنيفات
+                      // التصنيفات - نفس الألوان
                       if (reminder.category != null ||
                           reminder.domain != null) ...[
                         Row(
@@ -312,7 +315,8 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
                                   reminder.category!,
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: Colors.blue.shade200,
+                                    color:
+                                        Colors.blue.shade700, // لون أغمق للوضوح
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
@@ -334,7 +338,8 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
                                   reminder.domain!,
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: Colors.green.shade200,
+                                    color: Colors
+                                        .green.shade700, // لون أغمق للوضوح
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
@@ -347,7 +352,6 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
                       // حالة التذكير والوقت
                       Row(
                         children: [
-                          // حالة القراءة
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
@@ -371,8 +375,8 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
                                       : Icons.schedule,
                                   size: 12,
                                   color: reminder.isOpened == 1
-                                      ? Colors.green.shade200
-                                      : Colors.orange.shade200,
+                                      ? Colors.green.shade700 // لون أغمق
+                                      : Colors.orange.shade700, // لون أغمق
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
@@ -382,25 +386,23 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: reminder.isOpened == 1
-                                        ? Colors.green.shade200
-                                        : Colors.orange.shade200,
+                                        ? Colors.green.shade700 // لون أغمق
+                                        : Colors.orange.shade700, // لون أغمق
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-
                           const Spacer(),
-
-                          // وقت التذكير القادم إذا كان متوفراً
                           if (reminder.nextReminderTime != null &&
                               reminder.nextReminderTime!.isNotEmpty)
                             Text(
                               reminder.nextReminderTime!,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.white.withOpacity(0.6),
+                                color: Colors.black
+                                    .withOpacity(0.6), // نص أسود فاتح
                               ),
                             ),
                         ],
@@ -412,7 +414,7 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
                 // سهم للانتقال
                 Icon(
                   isArabic ? Icons.chevron_left : Icons.chevron_right,
-                  color: Colors.white.withOpacity(0.5),
+                  color: Colors.black.withOpacity(0.5), // أيقونة سوداء فاتحة
                   size: 20,
                 ),
               ],
@@ -431,26 +433,27 @@ class _ReminderSearchDelegate extends SearchDelegate<String> {
   @override
   ThemeData appBarTheme(BuildContext context) {
     return Theme.of(context).copyWith(
-      primaryColor: Colors.transparent,
-      scaffoldBackgroundColor: Colors.transparent,
+      primaryColor: Colors.white, // خلفية بيضاء
+      scaffoldBackgroundColor: Colors.white, // خلفية بيضاء
       appBarTheme: AppBarTheme(
-        backgroundColor: Colors.black.withOpacity(0.9), // خلفية داكنة شبه شفافة
-        iconTheme: const IconThemeData(color: Colors.white),
+        backgroundColor: Colors.white, // تغيير إلى أبيض
+        iconTheme: const IconThemeData(color: Colors.black), // أيقونات سوداء
         titleTextStyle: const TextStyle(
-          color: Colors.white,
+          color: Colors.black, // نص أسود
           fontSize: 18,
           fontWeight: FontWeight.w500,
         ),
-        elevation: 0,
+        elevation: 1, // إضافة ظل خفيف للوضوح
       ),
       inputDecorationTheme: InputDecorationTheme(
-        hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+        hintStyle: TextStyle(
+            color: Colors.black.withOpacity(0.7)), // نص التلميح أسود فاتح
         border: InputBorder.none,
         filled: false,
       ),
       textTheme: Theme.of(context).textTheme.copyWith(
             titleLarge: const TextStyle(
-              color: Colors.white,
+              color: Colors.black, // نص أسود
               fontSize: 18,
               fontWeight: FontWeight.w500,
             ),
@@ -534,6 +537,7 @@ class ReminderFilterLogic {
     return false;
   }
 }
+
 // ==============================================================================
 // 2. منطق البحث المُصحح
 // ==============================================================================
@@ -732,7 +736,7 @@ class _RemindersScreenState extends State<RemindersScreen>
         _hasTriedOnlineLoad = true;
 
         try {
-          await remindersNotifier.initializeImproved(forceRefresh: false);
+          await remindersNotifier.initializeImproved();
           _safeShowMessage('✅ تم تحميل البيانات من الإنترنت بنجاح');
         } catch (e) {
           print('❌ فشل تحميل البيانات من الإنترنت: $e');
@@ -756,7 +760,7 @@ class _RemindersScreenState extends State<RemindersScreen>
         Provider.of<RemindersNotifier>(context, listen: false);
 
     try {
-      await remindersNotifier.initializeImproved(forceRefresh: true);
+      await remindersNotifier.initializeImproved();
 
       final isArabic = Provider.of<LanguageManager>(context, listen: false)
               .locale

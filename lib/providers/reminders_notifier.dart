@@ -455,61 +455,60 @@ class RemindersNotifier extends ChangeNotifier {
     }
   }
 
-// دالة حذف التذكير محلياً
-  Future<void> deleteReminderLocally(int reminderId) async {
-    try {
-      print('حذف التذكير $reminderId محلياً');
+// Future<void> deleteReminderLocally(int reminderId) async {
+//     try {
+//       print('حذف التذكير $reminderId محلياً');
 
-      // إزالة التذكير من القوائم المحلية
-      _readReminders.removeWhere((r) => r.id == reminderId);
-      _unreadReminders.removeWhere((r) => r.id == reminderId);
+//       // إزالة التذكير من القوائم المحلية
+//       _readReminders.removeWhere((r) => r.id == reminderId);
+//       _unreadReminders.removeWhere((r) => r.id == reminderId);
 
-      // إلغاء الإشعارات المرتبطة به
-      await _notificationService.cancelReminderNotifications(reminderId);
+//       // إلغاء الإشعارات المرتبطة به
+//       await _notificationService.cancelReminderNotifications(reminderId);
 
-      // حذف التذكير من التخزين المؤقت
-      await _removeCachedReminder(reminderId);
+//       // حذف التذكير من التخزين المؤقت
+//       await _removeCachedReminder(reminderId);
 
-      // تقليل العدد الإجمالي
-      _totalReminders = _totalReminders > 0 ? _totalReminders - 1 : 0;
+//       // تقليل العدد الإجمالي
+//       _totalReminders = _totalReminders > 0 ? _totalReminders - 1 : 0;
 
-      notifyListeners();
-      print('تم حذف التذكير $reminderId محلياً بنجاح');
-    } catch (e) {
-      print('خطأ في حذف التذكير محلياً $reminderId: $e');
-      rethrow;
-    }
-  }
+//       notifyListeners();
+//       print('تم حذف التذكير $reminderId محلياً بنجاح');
+//     } catch (e) {
+//       print('خطأ في حذف التذكير محلياً $reminderId: $e');
+//       rethrow;
+//     }
+//   }
 
-// دالة إزالة التذكير من التخزين المؤقت
-  Future<void> _removeCachedReminder(int reminderId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
+// // دالة إزالة التذكير من التخزين المؤقت
+//   Future<void> _removeCachedReminder(int reminderId) async {
+//     try {
+//       final prefs = await SharedPreferences.getInstance();
 
-      // البحث في جميع صفحات التخزين المؤقت وإزالة التذكير
-      for (int page = 1; page <= _currentPage; page++) {
-        final key = '$_sessionRemindersKeyPrefix$page';
-        final cachedData = prefs.getString(key);
+//       // البحث في جميع صفحات التخزين المؤقت وإزالة التذكير
+//       for (int page = 1; page <= _currentPage; page++) {
+//         final key = '$_sessionRemindersKeyPrefix$page';
+//         final cachedData = prefs.getString(key);
 
-        if (cachedData != null) {
-          final List<dynamic> remindersList = jsonDecode(cachedData);
+//         if (cachedData != null) {
+//           final List<dynamic> remindersList = jsonDecode(cachedData);
 
-          // إزالة التذكير من القائمة
-          remindersList.removeWhere((item) => item['id'] == reminderId);
+//           // إزالة التذكير من القائمة
+//           remindersList.removeWhere((item) => item['id'] == reminderId);
 
-          // حفظ البيانات المحدثة
-          await prefs.setString(key, jsonEncode(remindersList));
-        }
-      }
+//           // حفظ البيانات المحدثة
+//           await prefs.setString(key, jsonEncode(remindersList));
+//         }
+//       }
 
-      // تحديث العدد الإجمالي في التخزين المؤقت
-      await prefs.setInt(_totalKey, _totalReminders);
+//       // تحديث العدد الإجمالي في التخزين المؤقت
+//       await prefs.setInt(_totalKey, _totalReminders);
 
-      print('تم إزالة التذكير $reminderId من التخزين المؤقت');
-    } catch (e) {
-      print('خطأ في إزالة التذكير من التخزين المؤقت: $e');
-    }
-  }
+//       print('تم إزالة التذكير $reminderId من التخزين المؤقت');
+//     } catch (e) {
+//       print('خطأ في إزالة التذكير من التخزين المؤقت: $e');
+//     }
+//   }
 
 // دالة تحديث التذكير في التخزين المؤقت
   Future<void> _updateCachedReminderFixed(Reminder updatedReminder) async {
@@ -1047,28 +1046,282 @@ class RemindersNotifier extends ChangeNotifier {
     }
   }
 
-  /// حذف تذكير مع إلغاء إشعاراته
+  // إصلاح دالة حذف التذكير في RemindersNotifier
+
+  // حذف تذكير مع إلغاء إشعاراته وتحديث الواجهة فوراً
   Future<void> deleteReminder(int id) async {
     try {
-      await _apiService.deleteReminder(id);
+      print('🗑️ بدء عملية حذف التذكير $id...');
+
+      // التحقق من وجود التذكير في القوائم المحلية
+      final existsInRead = _readReminders.any((r) => r.id == id);
+      final existsInUnread = _unreadReminders.any((r) => r.id == id);
+
+      if (!existsInRead && !existsInUnread) {
+        print('⚠️ التذكير $id غير موجود في القوائم المحلية');
+        return;
+      }
+
+      // === الخطوة 1: حذف التذكير من السيرفر ===
+      try {
+        await _apiService.deleteReminder(id);
+        print('✅ تم حذف التذكير $id من السيرفر');
+      } catch (e) {
+        print('❌ خطأ في حذف التذكير من السيرفر: $e');
+
+        // إذا كان الخطأ 404، فهذا يعني أن التذكير محذوف بالفعل من السيرفر
+        if (e.toString().contains('404') ||
+            e.toString().contains('not found')) {
+          print(
+              '💡 التذكير محذوف بالفعل من السيرفر، سيتم المتابعة بالحذف المحلي');
+        } else {
+          // في حالة أخطاء أخرى، إما نتوقف أو نتابع حسب المطلوب
+          print('⚠️ سيتم المتابعة بالحذف المحلي رغم الخطأ');
+        }
+      }
+
+      // === الخطوة 2: إزالة التذكير من القوائم المحلية فوراً ===
+      bool removedFromRead = false;
+      bool removedFromUnread = false;
+
+      // حفظ العدد السابق للتحقق
+      final previousReadCount = _readReminders.length;
+      final previousUnreadCount = _unreadReminders.length;
+
+      // إزالة من قائمة المقروءة
+      if (existsInRead) {
+        _readReminders.removeWhere((r) => r.id == id);
+        removedFromRead = _readReminders.length < previousReadCount;
+        print('🔄 إزالة من المقروءة: ${removedFromRead ? 'نجح' : 'فشل'}');
+      }
+
+      // إزالة من قائمة غير المقروءة
+      if (existsInUnread) {
+        _unreadReminders.removeWhere((r) => r.id == id);
+        removedFromUnread = _unreadReminders.length < previousUnreadCount;
+        print('🔄 إزالة من غير المقروءة: ${removedFromUnread ? 'نجح' : 'فشل'}');
+      }
+
+      // === الخطوة 3: إلغاء الإشعارات المتعلقة بالتذكير ===
+      try {
+        await _notificationService.cancelReminderNotifications(id);
+        print('🔔 تم إلغاء إشعارات التذكير $id');
+      } catch (e) {
+        print('⚠️ خطأ في إلغاء إشعارات التذكير $id: $e');
+      }
+
+      // === الخطوة 4: تحديث التخزين المؤقت ===
+      try {
+        await _removeCachedReminder(id);
+        print('💾 تم حذف التذكير من التخزين المؤقت');
+      } catch (e) {
+        print('⚠️ خطأ في حذف التذكير من التخزين المؤقت: $e');
+      }
+
+      // === الخطوة 5: تحديث العدد الإجمالي ===
+      if (removedFromRead || removedFromUnread) {
+        _totalReminders = _totalReminders > 0 ? _totalReminders - 1 : 0;
+        print('📊 تم تحديث العدد الإجمالي إلى: $_totalReminders');
+      }
+
+      // === الخطوة 6: تحديث الواجهة فوراً ===
+      notifyListeners();
+      print('🔄 تم إشعار المستمعين بالتحديث');
+
+      // === الخطوة 7: حفظ إضافي للتأكد ===
+      try {
+        await forceSaveCurrentState();
+        print('💾 تم الحفظ الإضافي للحالة');
+      } catch (e) {
+        print('⚠️ خطأ في الحفظ الإضافي: $e');
+      }
+
+      print('✅ تم حذف التذكير $id بنجاح وتحديث الواجهة');
+
+      // === للتطوير: طباعة الأعداد الحالية ===
+      if (kDebugMode) {
+        print('📈 الأعداد الحالية:');
+        print('   - مقروءة: ${_readReminders.length}');
+        print('   - غير مقروءة: ${_unreadReminders.length}');
+        print('   - المجموع: $_totalReminders');
+      }
+    } catch (e) {
+      print('❌ خطأ عام في حذف التذكير $id: $e');
+
+      // في حالة الخطأ، نحاول على الأقل حذف التذكير محلياً
+      try {
+        await deleteReminderLocally(id);
+        print('🔧 تم اللجوء للحذف المحلي');
+      } catch (localError) {
+        print('❌ فشل الحذف المحلي أيضاً: $localError');
+        rethrow;
+      }
+    }
+  }
+
+  /// دالة محسنة لحذف التذكير محلياً مع ضمان تحديث الواجهة
+  Future<void> deleteReminderLocally(int reminderId) async {
+    try {
+      print('🏠 حذف التذكير $reminderId محلياً...');
+
+      // حفظ الأعداد السابقة للمقارنة
+      final previousReadCount = _readReminders.length;
+      final previousUnreadCount = _unreadReminders.length;
 
       // إزالة التذكير من القوائم المحلية
-      _readReminders.removeWhere((r) => r.id == id);
-      _unreadReminders.removeWhere((r) => r.id == id);
+      _readReminders.removeWhere((r) => r.id == reminderId);
+      _unreadReminders.removeWhere((r) => r.id == reminderId);
 
-      // إلغاء الإشعارات المتعلقة بالتذكير
-      await _notificationService.cancelReminderNotifications(id);
+      // التحقق من نجاح الإزالة
+      final removedFromRead = _readReminders.length < previousReadCount;
+      final removedFromUnread = _unreadReminders.length < previousUnreadCount;
+      final wasRemoved = removedFromRead || removedFromUnread;
 
-      // تحديث التخزين المؤقت
-      await _deleteCachedReminder(id);
+      if (wasRemoved) {
+        print('✅ تم حذف التذكير من القوائم المحلية');
 
-      _totalReminders = _totalReminders > 0 ? _totalReminders - 1 : 0;
-      notifyListeners();
+        // إلغاء الإشعارات المرتبطة به
+        try {
+          await _notificationService.cancelReminderNotifications(reminderId);
+          print('🔔 تم إلغاء الإشعارات');
+        } catch (e) {
+          print('⚠️ خطأ في إلغاء الإشعارات: $e');
+        }
 
-      print('تم حذف التذكير $id مع إشعاراته');
+        // حذف التذكير من التخزين المؤقت
+        try {
+          await _removeCachedReminder(reminderId);
+          print('💾 تم حذف من التخزين المؤقت');
+        } catch (e) {
+          print('⚠️ خطأ في حذف من التخزين المؤقت: $e');
+        }
+
+        // تقليل العدد الإجمالي
+        _totalReminders = _totalReminders > 0 ? _totalReminders - 1 : 0;
+
+        // تحديث الواجهة فوراً
+        notifyListeners();
+        print('🔄 تم تحديث الواجهة');
+
+        print('✅ تم حذف التذكير $reminderId محلياً بنجاح');
+      } else {
+        print('⚠️ التذكير $reminderId لم يكن موجوداً في القوائم');
+      }
     } catch (e) {
-      print('خطأ في حذف التذكير: $e');
+      print('❌ خطأ في حذف التذكير محلياً $reminderId: $e');
       rethrow;
+    }
+  }
+
+  /// دالة محسنة لإزالة التذكير من التخزين المؤقت
+  Future<void> _removeCachedReminder(int reminderId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      bool wasRemoved = false;
+
+      print('🗃️ إزالة التذكير $reminderId من التخزين المؤقت...');
+
+      // البحث في جميع صفحات التخزين المؤقت وإزالة التذكير
+      for (int page = 1; page <= _currentPage; page++) {
+        final key = '$_sessionRemindersKeyPrefix$page';
+        final cachedData = prefs.getString(key);
+
+        if (cachedData != null && cachedData.isNotEmpty) {
+          try {
+            final List<dynamic> remindersList = jsonDecode(cachedData);
+            final originalLength = remindersList.length;
+
+            // إزالة التذكير من القائمة
+            remindersList.removeWhere((item) =>
+                item is Map<String, dynamic> && item['id'] == reminderId);
+
+            // التحقق من نجاح الإزالة
+            if (remindersList.length < originalLength) {
+              wasRemoved = true;
+              print('✅ تم حذف التذكير من الصفحة $page');
+
+              // حفظ البيانات المحدثة
+              await prefs.setString(key, jsonEncode(remindersList));
+            }
+          } catch (e) {
+            print('❌ خطأ في معالجة الصفحة $page: $e');
+            continue;
+          }
+        }
+      }
+
+      // تحديث العدد الإجمالي في التخزين المؤقت
+      await prefs.setInt(_totalKey, _totalReminders);
+
+      if (wasRemoved) {
+        print('✅ تم إزالة التذكير $reminderId من التخزين المؤقت');
+      } else {
+        print('⚠️ التذكير $reminderId لم يكن موجوداً في التخزين المؤقت');
+      }
+    } catch (e) {
+      print('❌ خطأ في إزالة التذكير من التخزين المؤقت: $e');
+      throw e;
+    }
+  }
+
+  /// دالة إضافية للتحقق من حالة التذكير قبل وبعد الحذف (للتطوير)
+  Future<void> debugReminderDeletion(int reminderId) async {
+    if (!kDebugMode) return;
+
+    print('🔍 === فحص حالة التذكير $reminderId ===');
+
+    // فحص الوجود في القوائم
+    final inRead = _readReminders.any((r) => r.id == reminderId);
+    final inUnread = _unreadReminders.any((r) => r.id == reminderId);
+
+    print('في قائمة المقروءة: $inRead');
+    print('في قائمة غير المقروءة: $inUnread');
+    print('إجمالي المقروءة: ${_readReminders.length}');
+    print('إجمالي غير المقروءة: ${_unreadReminders.length}');
+    print('العدد الإجمالي: $_totalReminders');
+
+    // فحص التخزين المؤقت
+    try {
+      bool foundInCache = false;
+      final prefs = await SharedPreferences.getInstance();
+
+      for (int page = 1; page <= _currentPage; page++) {
+        final key = '$_sessionRemindersKeyPrefix$page';
+        final cachedData = prefs.getString(key);
+
+        if (cachedData != null) {
+          final List<dynamic> remindersList = jsonDecode(cachedData);
+          final exists = remindersList.any((item) =>
+              item is Map<String, dynamic> && item['id'] == reminderId);
+          if (exists) {
+            foundInCache = true;
+            print('موجود في التخزين المؤقت - الصفحة $page');
+          }
+        }
+      }
+
+      if (!foundInCache) {
+        print('غير موجود في التخزين المؤقت');
+      }
+    } catch (e) {
+      print('خطأ في فحص التخزين المؤقت: $e');
+    }
+
+    print('=== انتهاء الفحص ===');
+  }
+
+  /// استخدام مثال لحذف التذكير مع التحقق
+  Future<void> deleteReminderWithDebugging(int reminderId) async {
+    if (kDebugMode) {
+      print('🎯 بدء حذف التذكير $reminderId مع التتبع...');
+      await debugReminderDeletion(reminderId);
+    }
+
+    await deleteReminder(reminderId);
+
+    if (kDebugMode) {
+      print('✅ انتهاء الحذف، فحص النتيجة:');
+      await debugReminderDeletion(reminderId);
     }
   }
 

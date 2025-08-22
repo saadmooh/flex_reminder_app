@@ -1165,7 +1165,54 @@ class _RemindersScreenState extends State<RemindersScreen>
                         ),
                       )
                     : RefreshIndicator(
-                        onRefresh: () => _refreshRemindersIfOnline(),
+                        onRefresh: () async {
+                          print(
+                              '🔄 تم السحب للأعلى - إعادة جلب التذكيرات من التخزين');
+                          final remindersNotifier =
+                              Provider.of<RemindersNotifier>(context,
+                                  listen: false);
+
+                          try {
+                            if (_isOnline) {
+                              // إعادة جلب من الخادم
+                              await remindersNotifier.initializeImproved();
+                              print('✅ تم تحديث البيانات من الخادم');
+                            } else {
+                              // إعادة جلب من التخزين المحلي
+                              await remindersNotifier.loadCachedDataImproved();
+                              print('✅ تم تحديث البيانات من التخزين المحلي');
+                            }
+
+                            final isArabic = Provider.of<LanguageManager>(
+                                        context,
+                                        listen: false)
+                                    .locale
+                                    .languageCode ==
+                                'ar';
+
+                            _safeShowMessage(
+                              isArabic
+                                  ? 'تم تحديث التذكيرات بنجاح'
+                                  : 'Reminders updated successfully',
+                              color: Colors.green,
+                            );
+                          } catch (e) {
+                            print('❌ خطأ في تحديث التذكيرات: $e');
+                            final isArabic = Provider.of<LanguageManager>(
+                                        context,
+                                        listen: false)
+                                    .locale
+                                    .languageCode ==
+                                'ar';
+
+                            _safeShowMessage(
+                              isArabic
+                                  ? 'فشل في تحديث التذكيرات'
+                                  : 'Failed to update reminders',
+                              color: Colors.red,
+                            );
+                          }
+                        },
                         color: Colors.black,
                         child: ListView.builder(
                           padding: const EdgeInsets.all(8.0),

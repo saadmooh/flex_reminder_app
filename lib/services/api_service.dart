@@ -102,7 +102,7 @@ class ApiService {
     String? domain,
     bool forceFetch = false,
     List<int> excludeIds = const [],
-   }) async {
+  }) async {
     return await _reminderService.fetchReminders(
       page: page,
       perPage: perPage,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flex_reminder/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:flex_reminder/services/api_service.dart';
 import 'package:flex_reminder/utils/language_manager.dart';
@@ -25,13 +26,17 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(60); // Reduced height since no search input
+  Size get preferredSize =>
+      const Size.fromHeight(60); // Reduced height since no search input
 
   @override
   Widget build(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
-    final languageManager = Provider.of<LanguageManager>(context, listen: false);
-    final remindersNotifier = Provider.of<RemindersNotifier>(context, listen: false);
+    final languageManager =
+        Provider.of<LanguageManager>(context, listen: false);
+    final remindersNotifier =
+        Provider.of<RemindersNotifier>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final isArabic = languageManager.locale.languageCode == 'ar';
     final currentRoute = ModalRoute.of(context)?.settings.name;
 
@@ -75,7 +80,7 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
               onPressed: onSearchPressed,
               tooltip: localizations.searchReminders,
             ),
-          
+
           // Language selector
           PopupMenuButton<String>(
             color: Colors.white,
@@ -113,7 +118,8 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
                 child: Text(
                   'English',
                   style: const TextStyle(color: Colors.black),
-                  textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
+                  textDirection:
+                      isArabic ? TextDirection.rtl : TextDirection.ltr,
                 ),
               ),
               PopupMenuItem(
@@ -121,7 +127,8 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
                 child: Text(
                   'العربية',
                   style: const TextStyle(color: Colors.black),
-                  textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
+                  textDirection:
+                      isArabic ? TextDirection.rtl : TextDirection.ltr,
                 ),
               ),
               const PopupMenuItem(
@@ -134,7 +141,7 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
               ),
             ],
           ),
-          
+
           // Settings menu
           if (showSettings)
             PopupMenuButton<String>(
@@ -143,8 +150,8 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
               onSelected: (value) async {
                 try {
                   if (value == 'logout') {
-                    await ApiService().logout();
-                    Navigator.pushReplacementNamed(context, '/');
+                    await authProvider.logout();
+                    Navigator.pushReplacementNamed(context, '/auth');
                   } else if (value == 'subscription_management') {
                     Navigator.pushNamed(context, '/subscription_management');
                   } else if (value == 'notification_settings') {
@@ -154,7 +161,8 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
                   print('Navigation error: $e');
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(localizations.navigationFailed(e.toString())),
+                      content:
+                          Text(localizations.navigationFailed(e.toString())),
                     ),
                   );
                 }
@@ -169,7 +177,8 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
                       child: Text(
                         localizations.subscriptionManagement,
                         style: const TextStyle(color: Colors.black),
-                        textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
+                        textDirection:
+                            isArabic ? TextDirection.rtl : TextDirection.ltr,
                       ),
                     ),
                   PopupMenuItem(
@@ -177,7 +186,8 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
                     child: Text(
                       localizations.notificationSettings,
                       style: const TextStyle(color: Colors.black),
-                      textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
+                      textDirection:
+                          isArabic ? TextDirection.rtl : TextDirection.ltr,
                     ),
                   ),
                   PopupMenuItem(
@@ -185,13 +195,14 @@ class UpperAppBar extends StatelessWidget implements PreferredSizeWidget {
                     child: Text(
                       localizations.logout,
                       style: const TextStyle(color: Colors.black),
-                      textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
+                      textDirection:
+                          isArabic ? TextDirection.rtl : TextDirection.ltr,
                     ),
                   ),
                 ];
               },
             ),
-          
+
           // Additional actions
           if (actions != null) ...actions!,
         ],

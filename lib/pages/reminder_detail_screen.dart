@@ -255,16 +255,16 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                       children: [
                         if (_reminder!.category != null &&
                             _reminder!.category!.isNotEmpty)
-                          _buildTag(_reminder!.category!, Colors.lightBlue[100]!,
-                              Colors.blue),
+                          _buildTag(_reminder!.category!,
+                              Colors.lightBlue[100]!, Colors.blue),
                         if (_reminder!.complexity != null &&
                             _reminder!.complexity!.isNotEmpty)
-                          _buildTag(_reminder!.complexity!,
-                              Colors.orange[100]!, Colors.orange),
+                          _buildTag(_reminder!.complexity!, Colors.orange[100]!,
+                              Colors.orange),
                         if (_reminder!.domain != null &&
                             _reminder!.domain!.isNotEmpty)
-                          _buildTag(
-                              _reminder!.domain!, Colors.green[100]!, Colors.green),
+                          _buildTag(_reminder!.domain!, Colors.green[100]!,
+                              Colors.green),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -323,8 +323,9 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                           setState(() => _isLoadingLink = true);
                           try {
                             // فحص الاتصال بالإنترنت
-                            final hasConnection = await _checkInternetConnection();
-                            
+                            final hasConnection =
+                                await _checkInternetConnection();
+
                             if (hasConnection) {
                               // إرسال طلب updateStats فقط في حال وجود اتصال بالإنترنت
                               await ApiService()
@@ -338,12 +339,13 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                               // عرض رسالة تحذيرية في حال عدم وجود اتصال بالإنترنت
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: Text('لا يوجد اتصال بالإنترنت. سيتم فتح الرابط فقط.'),
+                                  content: Text(
+                                      'لا يوجد اتصال بالإنترنت. سيتم فتح الرابط فقط.'),
                                   backgroundColor: Colors.orange,
                                 ),
                               );
                             }
-                            
+
                             // محاولة فتح الرابط (يعمل حتى بدون إنترنت للتطبيقات المحلية)
                             if (!await launchUrlString(_reminder!.url!)) {
                               ScaffoldMessenger.of(context).showSnackBar(

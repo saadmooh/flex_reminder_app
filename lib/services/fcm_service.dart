@@ -338,9 +338,9 @@ class FcmService {
 
         case 'delete':
           try {
-            await remindersNotifier.deleteReminder(reminderId);
-            operationSuccess = true;
-            successMessage = 'تم حذف التذكير رقم $reminderId';
+            await remindersNotifier.deleteReminderComprehensive(reminderId);
+            //  operationSuccess = true;
+            // successMessage = 'تم حذف التذكير رقم $reminderId';
           } catch (e) {
             errorMessage = 'فشل في حذف التذكير رقم $reminderId: $e';
           }

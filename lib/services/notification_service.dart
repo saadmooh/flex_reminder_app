@@ -71,26 +71,26 @@ Future<void> _handleFollowUpNotification(
         print('🕐 New reminder time received: $newReminderTime');
 
         // إرسال إشعار متابعة مع المعلومات المحدثة
-        // await AwesomeNotifications().createNotification(
-        //   content: NotificationContent(
-        //     id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-        //     channelKey: 'scheduled_channel',
-        //     title: '🔄 $title - تم إعادة الجدولة',
-        //     body: 'تم إعادة جدولة التذكير بنجاح للوقت التالي',
-        //     category: NotificationCategory.Reminder,
-        //     notificationLayout: NotificationLayout.Default,
-        //     payload: {
-        //       'id': reminderId,
-        //       'url': url,
-        //       'importance': importance,
-        //       'isFollowUp': 'true',
-        //       'rescheduled': 'true',
-        //       'newReminderTime': newReminderTime,
-        //     },
-        //     criticalAlert: true,
-        //     locked: true,
-        //   ),
-        // );
+        await AwesomeNotifications().createNotification(
+          content: NotificationContent(
+            id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+            channelKey: 'scheduled_channel',
+            title: '🔄 $title - تم إعادة الجدولة',
+            body: 'تم إعادة جدولة التذكير بنجاح للوقت التالي: $newReminderTime',
+            category: NotificationCategory.Reminder,
+            notificationLayout: NotificationLayout.Default,
+            payload: {
+              'id': reminderId,
+              'url': url,
+              'importance': importance,
+              'isFollowUp': 'true',
+              'rescheduled': 'true',
+              'newReminderTime': newReminderTime,
+            },
+            criticalAlert: true,
+            locked: true,
+          ),
+        );
 
         print('📨 Follow-up notification sent with reschedule info');
       } else {
@@ -119,13 +119,48 @@ Future<void> _handleFollowUpNotification(
     } catch (apiError) {
       print('❌ Error calling reschedulePost API: $apiError');
 
-      // في حالة فشل الطلب، إرسال إشعار متابعة عادي
+      // جدولة إعادة محاولة بعد 30 دقيقة
+      final DateTime retryTime =
+          DateTime.now().add(const Duration(minutes: 30));
+      print('🔄 Scheduling retry for reschedulePost at: $retryTime');
+
+      await Workmanager().registerOneOffTask(
+        'retry_followUpNotification_$reminderId',
+        'followUpNotification',
+        initialDelay: const Duration(minutes: 30),
+        inputData: {
+          'reminderId': reminderId,
+          'title': title,
+          'body': 'إعادة محاولة جدولة التذكير تلقائياً',
+          'url': url,
+          'importance': importance,
+          'scheduledTime': inputData['scheduledTime'],
+        },
+        constraints: Constraints(
+          networkType: NetworkType.connected,
+          requiresBatteryNotLow: false,
+          requiresCharging: false,
+          requiresDeviceIdle: false,
+          requiresStorageNotLow: false,
+        ),
+      );
+
+      // حفظ معلومات مهمة إعادة المحاولة
+      final prefs = await SharedPreferences.getInstance();
+      final Map<String, String> followUpTasks = await _getFollowUpTasks();
+      followUpTasks[reminderId.toString()] =
+          'retry_followUpNotification_$reminderId';
+      await prefs.setString('follow_up_tasks', jsonEncode(followUpTasks));
+      print('✅ Scheduled retry task for reminder $reminderId');
+
+      // إرسال إشعار لإعلام المستخدم بمحاولة إعادة الجدولة
       await AwesomeNotifications().createNotification(
         content: NotificationContent(
           id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
           channelKey: 'scheduled_channel',
           title: '⚠️ $title - خطأ في الجدولة',
-          body: 'لم يتم إعادة الجدولة بسبب خطأ في الاتصال',
+          body:
+              'لم يتم إعادة الجدولة بسبب خطأ في الاتصال. سيتم المحاولة مجدداً بعد 30 دقيقة.',
           category: NotificationCategory.Reminder,
           notificationLayout: NotificationLayout.Default,
           payload: {
@@ -134,19 +169,30 @@ Future<void> _handleFollowUpNotification(
             'importance': importance,
             'isFollowUp': 'true',
             'error': 'api_failed',
+            'retryScheduled': 'true',
+            'retryTime': retryTime.toIso8601String(),
           },
           criticalAlert: true,
           locked: true,
         ),
       );
 
-      print('📨 Error follow-up notification sent');
+      print('📨 Error follow-up notification sent with retry info');
     }
 
     print('✅ Follow-up processing completed for reminder: $reminderId');
   } catch (e) {
     print('❌ Error in follow-up notification handler: $e');
   }
+}
+
+// الحصول على معلومات مهام المتابعة
+Future<Map<String, String>> _getFollowUpTasks() async {
+  final prefs = await SharedPreferences.getInstance();
+  final String? tasksString = prefs.getString('follow_up_tasks');
+  if (tasksString == null) return {};
+  final Map<String, dynamic> decoded = jsonDecode(tasksString);
+  return decoded.cast<String, String>();
 }
 
 class NotificationService {
@@ -193,7 +239,7 @@ class NotificationService {
     // تهيئة WorkManager
     await Workmanager().initialize(
       callbackDispatcher,
-      isInDebugMode: false, // قم بتغييرها إلى false في الإنتاج
+      isInDebugMode: false,
     );
 
     await AwesomeNotifications().initialize(
@@ -275,7 +321,6 @@ class NotificationService {
 
           // تحديث التذكير إذا كان معرف التذكير متوفراً
           if (reminderId != null) {
-            // يمكن إضافة منطق تحديث التذكير هنا إذا لزم الأمر
             print('🔄 Updated reminder stats for ID: $reminderId');
           }
         } else {
@@ -450,7 +495,7 @@ class NotificationService {
           'scheduledTime': scheduledDate.toIso8601String(),
         },
         constraints: Constraints(
-          networkType: NetworkType.connected, // يتطلب اتصال بالإنترنت لطلب API
+          networkType: NetworkType.connected,
           requiresBatteryNotLow: false,
           requiresCharging: false,
           requiresDeviceIdle: false,

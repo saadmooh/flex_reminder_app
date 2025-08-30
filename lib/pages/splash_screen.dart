@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
@@ -10,12 +11,14 @@ import 'package:flex_reminder/utils/connectivity_helper.dart';
 class SplashScreen extends StatefulWidget {
   final bool? isFirebaseInitialized;
   final bool? isFcmInitialized;
+  final bool? isRevenueCatInitialized;
   final String? initializationError;
 
   const SplashScreen({
     super.key,
     this.isFirebaseInitialized,
     this.isFcmInitialized,
+    this.isRevenueCatInitialized,
     this.initializationError,
   });
 
@@ -73,7 +76,7 @@ class _SplashScreenState extends State<SplashScreen>
     super.initState();
     _safeShowMessage('🚀 SplashScreen initialized');
     _safeShowMessage(
-        '📋 Firebase: ${widget.isFirebaseInitialized}, FCM: ${widget.isFcmInitialized}');
+        '📋 Firebase: ${widget.isFirebaseInitialized}, FCM: ${widget.isFcmInitialized}, RevenueCat: ${widget.isRevenueCatInitialized}');
     if (widget.initializationError != null) {
       _safeShowMessage('⚠️ Init Error: ${widget.initializationError}',
           color: Colors.red);
@@ -514,6 +517,51 @@ class _SplashScreenState extends State<SplashScreen>
                       style: TextStyle(
                         color: widget.isFirebaseInitialized!
                             ? Colors.blue
+                            : Colors.red,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (widget.isRevenueCatInitialized != null)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: (widget.isRevenueCatInitialized! ? Colors.green : Colors.red)
+                      .withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: (widget.isRevenueCatInitialized!
+                            ? Colors.green
+                            : Colors.red)
+                        .withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      widget.isRevenueCatInitialized!
+                          ? Icons.monetization_on
+                          : Icons.money_off, // استبدال monetization_off بـ money_off
+                      color: widget.isRevenueCatInitialized!
+                          ? Colors.green
+                          : Colors.red,
+                      size: 14,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      widget.isRevenueCatInitialized!
+                          ? 'RevenueCat'
+                          : 'RevenueCat غير متاح',
+                      style: TextStyle(
+                        color: widget.isRevenueCatInitialized!
+                            ? Colors.green
                             : Colors.red,
                         fontSize: 12,
                         fontWeight: FontWeight.w500,

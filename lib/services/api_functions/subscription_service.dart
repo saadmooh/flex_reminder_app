@@ -1,5 +1,7 @@
+
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../utils/consts.dart';
 import 'api_config.dart';
 
 class SubscriptionService {
@@ -19,9 +21,9 @@ class SubscriptionService {
     try {
       final response = await http.get(
         Uri.parse(
-            '${ApiConfig.API_BASE_URL}/subscription/swap?subscription_id=$variantId'),
+            '${AppConstants.API_BASE_URL}/subscription/swap?subscription_id=$variantId'),
         headers: {
-          'X-API-Password': ApiConfig.API_PASSWORD,
+          'X-API-Password': AppConstants.API_PASSWORD,
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
         },
@@ -51,9 +53,9 @@ class SubscriptionService {
 
     try {
       final response = await http.get(
-        Uri.parse('${ApiConfig.API_BASE_URL}/subscription/check'),
+        Uri.parse('${AppConstants.API_BASE_URL}/subscription/check'),
         headers: {
-          'X-API-Password': ApiConfig.API_PASSWORD,
+          'X-API-Password': AppConstants.API_PASSWORD,
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
         },
@@ -84,9 +86,9 @@ class SubscriptionService {
 
     try {
       final response = await http.get(
-        Uri.parse('${ApiConfig.API_BASE_URL}/customer-portal-url'),
+        Uri.parse('${AppConstants.API_BASE_URL}/customer-portal-url'),
         headers: {
-          'X-API-Password': ApiConfig.API_PASSWORD,
+          'X-API-Password': AppConstants.API_PASSWORD,
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
         },
@@ -112,21 +114,21 @@ class SubscriptionService {
 
   Future<void> pauseSubscription() async {
     await _handleSubscriptionAction(
-      '${ApiConfig.API_BASE_URL}/subscription/pause',
+      '${AppConstants.API_BASE_URL}/subscription/pause',
       'Failed to pause subscription',
     );
   }
 
   Future<void> cancelSubscription() async {
     await _handleSubscriptionAction(
-      '${ApiConfig.API_BASE_URL}/subscription/cancel',
+      '${AppConstants.API_BASE_URL}/subscription/cancel',
       'Failed to cancel subscription',
     );
   }
 
   Future<Map<String, dynamic>> resumeSubscription() async {
     return await _handleSubscriptionAction(
-      '${ApiConfig.API_BASE_URL}/subscription/resume',
+      '${AppConstants.API_BASE_URL}/subscription/resume',
       'Failed to resume subscription',
     );
   }
@@ -145,7 +147,7 @@ class SubscriptionService {
       final response = await http.post(
         Uri.parse(url),
         headers: {
-          'X-API-Password': ApiConfig.API_PASSWORD,
+          'X-API-Password': AppConstants.API_PASSWORD,
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
         },
@@ -182,9 +184,9 @@ class SubscriptionService {
       }
 
       final response = await http.post(
-        Uri.parse('${ApiConfig.API_BASE_URL}/subscription/buy'),
+        Uri.parse('${AppConstants.API_BASE_URL}/subscription/buy'),
         headers: {
-          'X-API-Password': ApiConfig.API_PASSWORD,
+          'X-API-Password': AppConstants.API_PASSWORD,
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
           'Content-Type': 'application/json',

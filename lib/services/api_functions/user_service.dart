@@ -1,8 +1,10 @@
+
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flex_reminder/models/user.dart';
 import 'package:flex_reminder/models/user_free_time.dart';
+import '../../utils/consts.dart';
 import 'api_config.dart';
 import 'dart:io' as io show File if (dart.library.html) 'dart:html' show File;
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -18,9 +20,9 @@ class UserService {
     }
     final token = await _apiConfig.getToken();
     final response = await http.get(
-      Uri.parse('${ApiConfig.API_BASE_URL}/user'),
+      Uri.parse('${AppConstants.API_BASE_URL}/user'),
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         if (token != null) 'Authorization': 'Bearer $token',
         'Accept': 'application/json',
       },
@@ -41,9 +43,9 @@ class UserService {
     }
     final token = await _apiConfig.getToken();
     final response = await http.get(
-      Uri.parse('${ApiConfig.API_BASE_URL}/user'),
+      Uri.parse('${AppConstants.API_BASE_URL}/user'),
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         'Authorization': 'Bearer $token',
       },
     );
@@ -61,7 +63,7 @@ class UserService {
       throw Exception('Invalid or expired token');
     }
     print(language);
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/update-language');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/update-language');
     final token = await _apiConfig.getToken();
     if (token == null) {
       throw Exception('No authentication token found');
@@ -70,7 +72,7 @@ class UserService {
     final response = await http.post(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
@@ -92,7 +94,7 @@ class UserService {
     if (!await _apiConfig.checkTokenValidity()) {
       throw Exception('Invalid or expired token');
     }
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/free-times/store');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/free-times/store');
     final token = await _apiConfig.getToken();
     print('Create Free Time Request: day=$day, isOffDay=$isOffDay');
     final String formattedStartTime = formatTimeOfDay(startTime);
@@ -101,7 +103,7 @@ class UserService {
     final response = await http.post(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         if (token != null) 'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
@@ -127,7 +129,7 @@ class UserService {
     if (!await _apiConfig.checkTokenValidity()) {
       throw Exception('Invalid or expired token');
     }
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/free-times/$id');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/free-times/$id');
     final token = await _apiConfig.getToken();
 
     final String formattedStartTime = formatTimeOfDay(startTime);
@@ -136,7 +138,7 @@ class UserService {
     final response = await http.put(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         if (token != null) 'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
@@ -165,12 +167,12 @@ class UserService {
     if (!await _apiConfig.checkTokenValidity()) {
       throw Exception('Invalid or expired token');
     }
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/free-times');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/free-times');
     final token = await _apiConfig.getToken();
     final response = await http.get(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         if (token != null) 'Authorization': 'Bearer $token',
       },
     );
@@ -189,12 +191,12 @@ class UserService {
     if (!await _apiConfig.checkTokenValidity()) {
       throw Exception('Invalid or expired token');
     }
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/free-times/$id');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/free-times/$id');
     final token = await _apiConfig.getToken();
     final response = await http.delete(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         if (token != null) 'Authorization': 'Bearer $token',
       },
     );
@@ -215,12 +217,12 @@ class UserService {
     if (!await _apiConfig.checkTokenValidity()) {
       throw Exception('Invalid or expired token');
     }
-    const url = '${ApiConfig.API_BASE_URL}/user/update';
+    const url = '${AppConstants.API_BASE_URL}/user/update';
     final token = await _apiConfig.getToken();
     if (token == null) throw Exception('No authentication token found');
 
     var request = http.MultipartRequest('POST', Uri.parse(url));
-    request.headers['X-API-Password'] = ApiConfig.API_PASSWORD;
+    request.headers['X-API-Password'] = AppConstants.API_PASSWORD;
     request.headers['Authorization'] = 'Bearer $token';
     request.headers['Accept'] = 'application/json';
 

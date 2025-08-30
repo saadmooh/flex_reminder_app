@@ -10,6 +10,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flex_reminder/l10n/app_localizations.dart';
 import 'package:flex_reminder/providers/reminders_notifier.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flex_reminder/utils/connectivity_helper.dart';
 
 class ReminderDetailScreen extends StatefulWidget {
   final int reminderId;
@@ -24,22 +25,23 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
   late AppLocalizations localizations;
   bool _isLoadingLink = false;
   bool _isLoading = true;
+  bool _hasInternetConnection = true;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadReminder();
+      _checkConnectivity();
     });
   }
 
-  Future<bool> _checkInternetConnection() async {
-    try {
-      final connectivityResult = await Connectivity().checkConnectivity();
-      return connectivityResult != ConnectivityResult.none;
-    } catch (e) {
-      print('خطأ في فحص الاتصال بالإنترنت: $e');
-      return false;
+  Future<void> _checkConnectivity() async {
+    final hasConnection = await ConnectivityHelper.checkInternetConnection(verbose: true);
+    if (mounted) {
+      setState(() {
+        _hasInternetConnection = hasConnection;
+      });
     }
   }
 
@@ -94,6 +96,11 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
   }
 
   Future<void> _rescheduleReminder() async {
+    if (!_hasInternetConnection) {
+      _showNoInternetMessage();
+      return;
+    }
+
     final remindersNotifier =
         Provider.of<RemindersNotifier>(context, listen: false);
     try {
@@ -128,6 +135,15 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  void _showNoInternetMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('لا يوجد اتصال بالإنترنت. يرجى التحقق من الاتصال والمحاولة مرة أخرى.'),
+        backgroundColor: Colors.orange,
+      ),
+    );
   }
 
   @override
@@ -184,14 +200,20 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
           actions: [
             _reminder!.isOpened == 1
                 ? IconButton(
-                    icon: const Icon(Icons.refresh, color: Colors.black),
-                    tooltip: localizations.rescheduleReminder,
-                    onPressed: _rescheduleReminder,
+                    icon: Icon(Icons.refresh, 
+                        color: _hasInternetConnection ? Colors.black : Colors.grey),
+                    tooltip: _hasInternetConnection 
+                        ? localizations.rescheduleReminder
+                        : 'غير متاح بدون إنترنت',
+                    onPressed: _hasInternetConnection ? _rescheduleReminder : null,
                   )
                 : IconButton(
-                    icon: const Icon(Icons.edit, color: Colors.black),
-                    tooltip: localizations.editReminderTitle,
-                    onPressed: () async {
+                    icon: Icon(Icons.edit, 
+                        color: _hasInternetConnection ? Colors.black : Colors.grey),
+                    tooltip: _hasInternetConnection 
+                        ? localizations.editReminderTitle
+                        : 'غير متاح بدون إنترنت',
+                    onPressed: _hasInternetConnection ? () async {
                       final updatedReminder = await Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -208,7 +230,7 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                         // await _refreshAllReminders();
                         // Navigator.pop(context, {'type': 'update', 'id': _reminder!.id});
                       }
-                    },
+                    } : () => _showNoInternetMessage(),
                   ),
             _buildDeleteButton(context),
           ],
@@ -307,6 +329,35 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                         style:
                             const TextStyle(color: Colors.grey, fontSize: 14)),
                     const SizedBox(height: 24),
+                    // إضافة مؤشر حالة الاتصال
+                    if (!_hasInternetConnection)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange[200]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.wifi_off, color: Colors.orange[700], size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'لا يوجد اتصال بالإنترنت. بعض الميزات غير متاحة.',
+                                style: TextStyle(color: Colors.orange[700], fontSize: 14),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: _checkConnectivity,
+                              child: Text(
+                                'إعادة المحاولة',
+                                style: TextStyle(color: Colors.orange[700]),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -317,36 +368,30 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _isLoadingLink
+                  onPressed: (_isLoadingLink || !_hasInternetConnection)
                       ? null
                       : () async {
                           setState(() => _isLoadingLink = true);
                           try {
-                            // فحص الاتصال بالإنترنت
-                            final hasConnection =
-                                await _checkInternetConnection();
-
+                            // فحص الاتصال مرة أخرى قبل التنفيذ
+                            final hasConnection = await ConnectivityHelper.checkInternetConnection();
+                            
                             if (hasConnection) {
                               // إرسال طلب updateStats فقط في حال وجود اتصال بالإنترنت
-                              await ApiService()
-                                  .updateStats(_reminder!.url!, true);
+                              await ApiService().updateStats(_reminder!.url!, true);
                               final remindersNotifier =
                                   Provider.of<RemindersNotifier>(context,
                                       listen: false);
                               await remindersNotifier
                                   .updateSingleReminder(_reminder!.id);
                             } else {
-                              // عرض رسالة تحذيرية في حال عدم وجود اتصال بالإنترنت
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                      'لا يوجد اتصال بالإنترنت. سيتم فتح الرابط فقط.'),
-                                  backgroundColor: Colors.orange,
-                                ),
-                              );
+                              // تحديث حالة الاتصال
+                              setState(() => _hasInternetConnection = false);
+                              _showNoInternetMessage();
+                              return;
                             }
 
-                            // محاولة فتح الرابط (يعمل حتى بدون إنترنت للتطبيقات المحلية)
+                            // محاولة فتح الرابط
                             if (!await launchUrlString(_reminder!.url!)) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
@@ -368,7 +413,9 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                           }
                         },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xff050505),
+                    backgroundColor: _hasInternetConnection 
+                        ? const Color(0xff050505)
+                        : Colors.grey,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -377,7 +424,9 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                   child: _isLoadingLink
                       ? const CircularProgressIndicator(color: Colors.white)
                       : Text(
-                          localizations.goTo,
+                          _hasInternetConnection 
+                              ? localizations.goTo
+                              : 'غير متاح بدون إنترنت',
                           style: const TextStyle(
                               color: Colors.white, fontSize: 16),
                         ),
@@ -397,9 +446,12 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
 
   Widget _buildDeleteButton(BuildContext context) {
     return IconButton(
-      icon: const Icon(Icons.delete, color: Colors.black),
-      tooltip: localizations.deleteReminder,
-      onPressed: () async {
+      icon: Icon(Icons.delete, 
+          color: _hasInternetConnection ? Colors.black : Colors.grey),
+      tooltip: _hasInternetConnection 
+          ? localizations.deleteReminder
+          : 'غير متاح بدون إنترنت',
+      onPressed: _hasInternetConnection ? () async {
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
@@ -425,6 +477,7 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                       // await _clearLastReminderId();
                       // await _refreshAllReminders();
                       Navigator.pop(context);
+                      Navigator.pop(context);
                       // ملاحظة: تم تعليق إرسال النتيجة عند الحذف
                       // Navigator.pop(context, {'type': 'delete', 'id': _reminder!.id});
                     } else {
@@ -445,7 +498,7 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
             ],
           ),
         );
-      },
+      } : () => _showNoInternetMessage(),
     );
   }
 

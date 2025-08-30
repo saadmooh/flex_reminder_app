@@ -1,7 +1,9 @@
+
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flex_reminder/models/reminder.dart';
 import 'package:flex_reminder/models/reminders_response.dart';
+import '../../utils/consts.dart';
 import 'api_config.dart';
 
 class ReminderService {
@@ -13,13 +15,13 @@ class ReminderService {
     if (!await _apiConfig.checkTokenValidity()) {
       throw Exception('Invalid or expired token');
     }
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/getRemindersIds');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/getRemindersIds');
     final token = await _apiConfig.getToken();
 
     final response = await http.get(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         if (token != null) 'Authorization': 'Bearer $token',
         'Accept': 'application/json',
       },
@@ -66,14 +68,14 @@ class ReminderService {
       if (excludeIds.isNotEmpty) 'ids': excludeIds.join(','),
     };
 
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/reminders')
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/reminders')
         .replace(queryParameters: queryParameters);
     final token = await _apiConfig.getToken();
 
     final response = await http.get(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         if (token != null) 'Authorization': 'Bearer $token',
       },
     ).timeout(const Duration(seconds: 10));
@@ -94,13 +96,13 @@ class ReminderService {
     if (!await _apiConfig.checkTokenValidity()) {
       throw Exception('Invalid or expired token');
     }
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/deleteReminder/$id');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/deleteReminder/$id');
     final token = await _apiConfig.getToken();
 
     final response = await http.get(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         if (token != null) 'Authorization': 'Bearer $token',
       },
     );
@@ -118,12 +120,12 @@ class ReminderService {
       throw Exception('Invalid or expired token');
     }
     try {
-      final url = Uri.parse('${ApiConfig.API_BASE_URL}/reminder?url=$postUrl');
+      final url = Uri.parse('${AppConstants.API_BASE_URL}/reminder?url=$postUrl');
       final token = await _apiConfig.getToken();
       final response = await http.get(
         url,
         headers: {
-          'X-API-Password': ApiConfig.API_PASSWORD,
+          'X-API-Password': AppConstants.API_PASSWORD,
           if (token != null) 'Authorization': 'Bearer $token',
           'Accept': 'application/json',
         },
@@ -157,64 +159,64 @@ class ReminderService {
     }
   }
 
-Future<Reminder> getReminderById(int postId) async {
-  if (!await _apiConfig.checkTokenValidity()) {
-    throw Exception('Invalid or expired token');
-  }
-
-  try {
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/reminderById?id=$postId');
-    final token = await _apiConfig.getToken();
-    final response = await http.get(
-      url,
-      headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
-        if (token != null) 'Authorization': 'Bearer $token',
-        'Accept': 'application/json',
-      },
-    );
-
-    print('Get Reminder By ID Response: ${response.body}');
-
-    if (response.statusCode == 200) {
-      if (response.body.isEmpty) {
-        throw Exception('Empty response received');
-      }
-      try {
-        final decodedData = json.decode(response.body);
-        
-        // التحقق من وجود خاصية reminder في الاستجابة
-        if (decodedData['reminder'] != null) {
-          return Reminder.fromJson(decodedData['reminder']);
-        } else {
-          throw Exception('No reminder data found in response');
-        }
-      } on FormatException catch (e) {
-        print('JSON parsing error: ${response.body}');
-        throw Exception('Invalid response format: ${e.message}');
-      }
-    } else if (response.statusCode == 404) {
-      throw Exception('Reminder not found');
-    } else {
-      try {
-        final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'Failed to load reminder');
-      } catch (e) {
-        throw Exception('Failed to load reminder: ${response.statusCode}');
-      }
+  Future<Reminder> getReminderById(int postId) async {
+    if (!await _apiConfig.checkTokenValidity()) {
+      throw Exception('Invalid or expired token');
     }
-  } catch (e) {
-    print('Error in getReminderById: $e');
-    rethrow;
+
+    try {
+      final url = Uri.parse('${AppConstants.API_BASE_URL}/reminderById?id=$postId');
+      final token = await _apiConfig.getToken();
+      final response = await http.get(
+        url,
+        headers: {
+          'X-API-Password': AppConstants.API_PASSWORD,
+          if (token != null) 'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      print('Get Reminder By ID Response: ${response.body}');
+
+      if (response.statusCode == 200) {
+        if (response.body.isEmpty) {
+          throw Exception('Empty response received');
+        }
+        try {
+          final decodedData = json.decode(response.body);
+          
+          // التحقق من وجود خاصية reminder في الاستجابة
+          if (decodedData['reminder'] != null) {
+            return Reminder.fromJson(decodedData['reminder']);
+          } else {
+            throw Exception('No reminder data found in response');
+          }
+        } on FormatException catch (e) {
+          print('JSON parsing error: ${response.body}');
+          throw Exception('Invalid response format: ${e.message}');
+        }
+      } else if (response.statusCode == 404) {
+        throw Exception('Reminder not found');
+      } else {
+        try {
+          final errorData = json.decode(response.body);
+          throw Exception(errorData['message'] ?? 'Failed to load reminder');
+        } catch (e) {
+          throw Exception('Failed to load reminder: ${response.statusCode}');
+        }
+      }
+    } catch (e) {
+      print('Error in getReminderById: $e');
+      rethrow;
+    }
   }
-}
 
   Future<Map<String, dynamic>> reschedulePost(
       String postUrl, String importance) async {
     if (!await _apiConfig.checkTokenValidity()) {
       throw Exception('Invalid or expired token');
     }
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/reschedule-post');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/reschedule-post');
     final token = await _apiConfig.getToken();
 
     final Map<String, Map<String, String>> importanceOptions = {
@@ -229,7 +231,7 @@ Future<Reminder> getReminderById(int postId) async {
     final response = await http.post(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         if (token != null) 'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
@@ -255,13 +257,13 @@ Future<Reminder> getReminderById(int postId) async {
     if (!await _apiConfig.checkTokenValidity()) {
       throw Exception('Invalid or expired token');
     }
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/update-reminder');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/update-reminder');
     final token = await _apiConfig.getToken();
 
     final response = await http.post(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         if (token != null) 'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
@@ -307,9 +309,9 @@ Future<Reminder> getReminderById(int postId) async {
 
     print('Save Post Request: $data');
     final response = await http.post(
-      Uri.parse('${ApiConfig.API_BASE_URL}/save-post'),
+      Uri.parse('${AppConstants.API_BASE_URL}/save-post'),
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },

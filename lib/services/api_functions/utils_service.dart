@@ -1,5 +1,7 @@
+
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../utils/consts.dart';
 import 'api_config.dart';
 
 class UtilsService {
@@ -12,14 +14,14 @@ class UtilsService {
     if (!await _apiConfig.checkTokenValidity()) {
       throw Exception('Invalid or expired token');
     }
-    final uri = Uri.parse('${ApiConfig.API_BASE_URL}/$endpoint');
+    final uri = Uri.parse('${AppConstants.API_BASE_URL}/$endpoint');
     http.Response response;
 
     if (method == 'POST') {
       response = await http.post(
         uri,
         headers: {
-          'X-API-Password': ApiConfig.API_PASSWORD,
+          'X-API-Password': AppConstants.API_PASSWORD,
           'Content-Type': 'application/json',
         },
         body: jsonEncode(data),
@@ -28,7 +30,7 @@ class UtilsService {
       response = await http.get(
         uri,
         headers: {
-          'X-API-Password': ApiConfig.API_PASSWORD,
+          'X-API-Password': AppConstants.API_PASSWORD,
         },
       );
     }
@@ -44,9 +46,9 @@ class UtilsService {
   Future<DateTime> getServerTime() async {
     try {
       final response = await http.get(
-        Uri.parse('${ApiConfig.API_BASE_URL}/server-time'),
+        Uri.parse('${AppConstants.API_BASE_URL}/server-time'),
         headers: {
-          'X-API-Password': ApiConfig.API_PASSWORD,
+          'X-API-Password': AppConstants.API_PASSWORD,
           'Accept': 'application/json',
         },
       );
@@ -58,7 +60,7 @@ class UtilsService {
         if (data['status'] == 'success' && data['server_time'] != null) {
           final serverDate = DateTime.parse(data['server_time']);
           await _apiConfig.storage.write(
-              key: 'last_server_time', value: serverDate.toIso8601String());
+              key: AppConstants.LAST_SERVER_TIME_KEY, value: serverDate.toIso8601String());
           return serverDate;
         } else {
           throw Exception('Failed to fetch time: Invalid response');
@@ -69,7 +71,7 @@ class UtilsService {
     } catch (e) {
       print('Error fetching server time: $e');
       final lastServerTimeStr =
-          await _apiConfig.storage.read(key: 'last_server_time');
+          await _apiConfig.storage.read(key: AppConstants.LAST_SERVER_TIME_KEY);
       if (lastServerTimeStr != null) {
         print('Using last stored time: $lastServerTimeStr');
         return DateTime.parse(lastServerTimeStr);
@@ -85,9 +87,9 @@ class UtilsService {
     }
     final token = await _apiConfig.getToken();
     final response = await http.get(
-      Uri.parse('${ApiConfig.API_BASE_URL}/api-credentials'),
+      Uri.parse('${AppConstants.API_BASE_URL}/api-credentials'),
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         'Authorization': 'Bearer $token',
       },
     );
@@ -105,9 +107,9 @@ class UtilsService {
     }
     final token = await _apiConfig.getToken();
     final response = await http.get(
-      Uri.parse('${ApiConfig.API_BASE_URL}/api-credentials'),
+      Uri.parse('${AppConstants.API_BASE_URL}/api-credentials'),
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         'Authorization': 'Bearer $token',
       },
     );

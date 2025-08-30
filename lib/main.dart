@@ -1,4 +1,3 @@
-// File: lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
@@ -26,43 +25,39 @@ import 'package:flex_reminder/services/fcm_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flex_reminder/utils/connectivity_helper.dart'; // استيراد الدالة الموحدة
+import 'package:flex_reminder/utils/connectivity_helper.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:flex_reminder/utils/consts.dart'; // Added import for AppConstants
 
-// متغيرات للتحكم في حالة التهيئة
+// Variables for initialization state
 bool _isFirebaseInitialized = false;
 bool _isFcmInitialized = false;
+bool _isRevenueCatInitialized = false;
 String? _initializationError;
 
-// إنشاء instance مشترك للـ NotificationService
+// Shared instance for NotificationService
 late NotificationService _backgroundNotificationService;
 late FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin;
 
-// معالج الرسائل في الخلفية - محسن مع الجدولة
+// Background message handler - optimized with scheduling
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
-    // تهيئة Firebase للخلفية إذا لم تكن مهيئة
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
     }
-    // تهيئة خدمة الإشعارات للخلفية
     await _initializeBackgroundServices();
 
-    // استخراج البيانات من الرسالة
     final String title =
         message.notification?.title ?? message.data['title'] ?? 'تذكير جديد';
-
     final String body = message.notification?.body ??
         message.data['body'] ??
         'لديك تذكير في انتظارك';
 
-    // محاولة معالجة الرسالة وجدولة الإشعارات
     bool schedulingSuccess = false;
-
     try {
-      // معالجة رسالة FCM
       await FcmService.processMessage(message, isBackground: true);
     } catch (processingError) {
       print('❌ خطأ في معالجة FCM: $processingError');
@@ -78,14 +73,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 }
 
-// تهيئة Firebase بشكل آمن
+// Safe Firebase initialization
 Future<bool> _initializeFirebaseSafely() async {
   try {
     print('🔄 فحص الاتصال بالإنترنت...');
-    
-    // فحص الاتصال بالإنترنت أولاً باستخدام الدالة الموحدة
-    final hasInternet = await ConnectivityHelper.checkInternetConnection(verbose: true);
-    
+    final hasInternet =
+        await ConnectivityHelper.checkInternetConnection(verbose: true);
     if (!hasInternet) {
       print('⚠️ لا يوجد اتصال بالإنترنت - تخطي تهيئة Firebase');
       _initializationError = 'لا يوجد اتصال بالإنترنت';
@@ -93,21 +86,15 @@ Future<bool> _initializeFirebaseSafely() async {
     }
 
     print('🚀 بدء تهيئة Firebase...');
-    
-    // تهيئة Firebase مع timeout
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     ).timeout(
       const Duration(seconds: 10),
-      onTimeout: () {
-        throw Exception('انتهت مهلة تهيئة Firebase');
-      },
+      onTimeout: () => throw Exception('انتهت مهلة تهيئة Firebase'),
     );
-    
     print('✅ تم تهيئة Firebase بنجاح');
     _isFirebaseInitialized = true;
     return true;
-    
   } catch (e) {
     print('❌ خطأ في تهيئة Firebase: $e');
     _initializationError = 'خطأ في تهيئة Firebase: $e';
@@ -116,7 +103,7 @@ Future<bool> _initializeFirebaseSafely() async {
   }
 }
 
-// تهيئة FCM بشكل آمن
+// Safe FCM initialization
 Future<bool> _initializeFcmSafely() async {
   try {
     if (!_isFirebaseInitialized) {
@@ -125,25 +112,18 @@ Future<bool> _initializeFcmSafely() async {
     }
 
     print('🔄 بدء تهيئة FCM...');
-    
-    // تسجيل معالج الرسائل في الخلفية
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     print('✅ تم تسجيل معالج الرسائل في الخلفية');
 
-    // تهيئة FcmService مع إعدادات محسنة
     final fcmService = FcmService();
     final fcmResult = await fcmService.init().timeout(
-      const Duration(seconds: 8),
-      onTimeout: () {
-        return {'success': false, 'message': 'انتهت مهلة تهيئة FCM'};
-      },
-    );
-    
+          const Duration(seconds: 8),
+          onTimeout: () =>
+              {'success': false, 'message': 'انتهت مهلة تهيئة FCM'},
+        );
     print('✅ تم تهيئة FCM Service: ${fcmResult['message']}');
     _isFcmInitialized = fcmResult['success'] ?? false;
-    
     return _isFcmInitialized;
-    
   } catch (e) {
     print('❌ خطأ في تهيئة FCM: $e');
     _isFcmInitialized = false;
@@ -151,7 +131,24 @@ Future<bool> _initializeFcmSafely() async {
   }
 }
 
-// إعداد معالجات الرسائل
+// Safe RevenueCat initialization
+Future<bool> _initializeRevenueCatSafely() async {
+  try {
+    print('🔄 بدء تهيئة RevenueCat...');
+    await Purchases.configure(
+      PurchasesConfiguration("goog_WnLgVtBcHCJndRicBHtliPtJENT"),
+    );
+    print('✅ تم تهيئة RevenueCat بنجاح');
+    _isRevenueCatInitialized = true;
+    return true;
+  } catch (e) {
+    print('❌ خطأ في تهيئة RevenueCat: $e');
+    _isRevenueCatInitialized = false;
+    return false;
+  }
+}
+
+// Setup message handlers
 void _setupMessageHandlers() {
   if (!_isFirebaseInitialized) {
     print('⚠️ تخطي إعداد معالجات الرسائل - Firebase غير مهيئ');
@@ -159,15 +156,10 @@ void _setupMessageHandlers() {
   }
 
   try {
-    // إعداد معالج الرسائل عندما يكون التطبيق في المقدمة
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       print('📨 وصلت رسالة والتطبيق في المقدمة');
-
       try {
-        // معالجة الرسالة في المقدمة
         await FcmService.processMessage(message, isBackground: false);
-
-        // جدولة إشعار إضافي في المقدمة أيضاً
         final notificationService = NotificationService();
         await _scheduleForegroundNotification(message, notificationService);
       } catch (e) {
@@ -175,22 +167,16 @@ void _setupMessageHandlers() {
       }
     });
 
-    // معالجة النقر على الإشعار عندما يكون التطبيق في الخلفية
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       print('📱 تم فتح التطبيق من إشعار في الخلفية');
       print('Message data: ${message.data}');
-
-      // معالجة التنقل إلى الصفحة المطلوبة
       _handleMessageOpenedApp(message);
     });
 
-    // التحقق من الرسالة الأولية
     FirebaseMessaging.instance.getInitialMessage().then((initialMessage) {
       if (initialMessage != null) {
         print('📬 تم فتح التطبيق من إشعار أولي');
         print('Initial message data: ${initialMessage.data}');
-
-        // معالجة الرسالة الأولية
         Future.delayed(const Duration(seconds: 2), () {
           _handleMessageOpenedApp(initialMessage);
         });
@@ -205,13 +191,9 @@ void _setupMessageHandlers() {
   }
 }
 
-// باقي الكود يبقى كما هو...
-// (كل الدوال المساعدة الأخرى)
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // تهيئة WorkManager أولاً (لا يتطلب إنترنت)
   try {
     await Workmanager().initialize(
       callbackDispatcher,
@@ -222,7 +204,6 @@ void main() async {
     print('⚠️ خطأ في تهيئة WorkManager: $e');
   }
 
-  // تهيئة خدمة الإشعارات (لا تتطلب إنترنت)
   try {
     final notificationService = NotificationService();
     await notificationService.init();
@@ -231,16 +212,14 @@ void main() async {
     print('⚠️ خطأ في تهيئة خدمة الإشعارات: $e');
   }
 
-  // محاولة تهيئة Firebase (قد تفشل بدون إنترنت)
   final firebaseInitialized = await _initializeFirebaseSafely();
-  
-  // محاولة تهيئة FCM (فقط إذا تم تهيئة Firebase)
   if (firebaseInitialized) {
     await _initializeFcmSafely();
     _setupMessageHandlers();
   }
 
-  // تشغيل التطبيق بغض النظر عن حالة Firebase
+  await _initializeRevenueCatSafely();
+
   runApp(
     MultiProvider(
       providers: [
@@ -253,6 +232,7 @@ void main() async {
       child: MyApp(
         isFirebaseInitialized: _isFirebaseInitialized,
         isFcmInitialized: _isFcmInitialized,
+        isRevenueCatInitialized: _isRevenueCatInitialized,
         initializationError: _initializationError,
       ),
     ),
@@ -261,23 +241,17 @@ void main() async {
   print('✅ تم إطلاق التطبيق بنجاح');
 }
 
-// تهيئة الخدمات في الخلفية
 Future<void> _initializeBackgroundServices() async {
   try {
-    // تهيئة NotificationService
     _backgroundNotificationService = NotificationService();
     await _backgroundNotificationService.init();
-
-    // تهيئة FlutterLocalNotifications
     await _initializeLocalNotifications();
-
     print('✅ تم تهيئة الخدمات في الخلفية');
   } catch (e) {
     print('❌ خطأ في تهيئة الخدمات في الخلفية: $e');
   }
 }
 
-// تهيئة الإشعارات المحلية في الخلفية
 Future<void> _initializeLocalNotifications() async {
   try {
     _flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
@@ -312,23 +286,17 @@ Future<void> _initializeLocalNotifications() async {
   }
 }
 
-// جدولة إشعار احتياطي
 Future<void> _scheduleFailbackNotification(
     String title, String body, Map<String, dynamic> data) async {
   try {
     print('🔄 جدولة إشعار احتياطي...');
-
-    // إشعار احتياطي فوري
     await _showDirectLocalNotification(
       title: '⚠️ $title (احتياطي)',
       body: '$body - تم استلام الرسالة',
       data: data,
       notificationId: DateTime.now().millisecondsSinceEpoch ~/ 1000,
     );
-
-    // إشعار احتياطي مجدول بعد دقيقة
     final scheduledDate = DateTime.now().add(const Duration(seconds: 20));
-
     await _backgroundNotificationService.scheduleNotification(
       title: '⚠️ $title (احتياطي)',
       body: 'رسالة لم يتم تسليمها: $body',
@@ -342,14 +310,12 @@ Future<void> _scheduleFailbackNotification(
         'scheduled_at': scheduledDate.toIso8601String(),
       },
     );
-
     print('✅ تم جدولة الإشعار الاحتياطي');
   } catch (e) {
     print('❌ خطأ في جدولة الإشعار الاحتياطي: $e');
   }
 }
 
-// عرض إشعار محلي مباشر
 Future<void> _showDirectLocalNotification({
   required String title,
   required String body,
@@ -373,12 +339,12 @@ Future<void> _showDirectLocalNotification({
         AndroidNotificationAction(
           'view_action',
           'عرض',
-          titleColor: Color.fromARGB(255, 255, 255, 255),
+          titleColor: AppConstants.TEXT_COLOR, // Updated to use AppConstants
         ),
         AndroidNotificationAction(
           'dismiss_action',
           'إخفاء',
-          titleColor: Color.fromARGB(255, 255, 0, 0),
+          titleColor: Colors.red, // Kept as Colors.red for contrast
           contextual: true,
         ),
       ],
@@ -405,18 +371,15 @@ Future<void> _showDirectLocalNotification({
       notificationDetails,
       payload: jsonEncode(data),
     );
-
     print('✅ تم إظهار إشعار محلي مباشر: $title');
   } catch (e) {
     print('❌ خطأ في إظهار الإشعار المحلي المباشر: $e');
   }
 }
 
-// معالجة النقر على الإشعار في الخلفية
 void _handleBackgroundNotificationClick(NotificationResponse response) {
   try {
     print('👆 تم النقر على إشعار في الخلفية');
-
     if (response.payload != null) {
       final data = jsonDecode(response.payload!);
       print('البيانات: $data');
@@ -426,19 +389,14 @@ void _handleBackgroundNotificationClick(NotificationResponse response) {
   }
 }
 
-// جدولة إشعار في المقدمة
 Future<void> _scheduleForegroundNotification(
     RemoteMessage message, NotificationService notificationService) async {
   try {
     final title =
         message.notification?.title ?? message.data['title'] ?? 'تذكير جديد';
-
     final body =
         message.notification?.body ?? message.data['body'] ?? 'لديك تذكير جديد';
-
-    // جدولة إشعار بعد 10 ثوان
     final scheduledDate = DateTime.now().add(const Duration(seconds: 10));
-
     await notificationService.scheduleNotification(
       title: '📱 $title (مقدمة)',
       body: body,
@@ -451,25 +409,19 @@ Future<void> _scheduleForegroundNotification(
         ...message.data.map((key, value) => MapEntry(key, value.toString())),
       },
     );
-
     print('✅ تم جدولة إشعار المقدمة للوقت: $scheduledDate');
   } catch (e) {
     print('❌ خطأ في جدولة إشعار المقدمة: $e');
   }
 }
 
-// معالجة فتح التطبيق من إشعار
 void _handleMessageOpenedApp(RemoteMessage message) {
   try {
     print('🔗 معالجة فتح التطبيق من إشعار...');
-
     final data = message.data;
-
-    // التحقق من وجود معرف التذكير
     if (data.containsKey('reminder_id')) {
       final reminderId = int.tryParse(data['reminder_id'].toString());
       if (reminderId != null) {
-        // التنقل إلى صفحة التذكير
         Future.delayed(const Duration(milliseconds: 500), () {
           navigatorKey.currentState?.pushNamed('/reminder', arguments: {
             'reminderId': reminderId,
@@ -478,8 +430,6 @@ void _handleMessageOpenedApp(RemoteMessage message) {
         return;
       }
     }
-
-    // التنقل الافتراضي إلى الصفحة الرئيسية
     Future.delayed(const Duration(milliseconds: 500), () {
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/reminders',
@@ -494,19 +444,21 @@ void _handleMessageOpenedApp(RemoteMessage message) {
 class MyApp extends StatelessWidget {
   final bool isFirebaseInitialized;
   final bool isFcmInitialized;
+  final bool isRevenueCatInitialized;
   final String? initializationError;
 
   const MyApp({
     super.key,
     required this.isFirebaseInitialized,
     required this.isFcmInitialized,
+    required this.isRevenueCatInitialized,
     this.initializationError,
   });
 
   @override
   Widget build(BuildContext context) {
-    print('MyApp build called - Firebase: $isFirebaseInitialized, FCM: $isFcmInitialized');
-    
+    print(
+        'MyApp build called - Firebase: $isFirebaseInitialized, FCM: $isFcmInitialized, RevenueCat: $isRevenueCatInitialized');
     return Consumer<LanguageManager>(
       builder: (context, languageManager, child) {
         return MaterialApp(
@@ -517,25 +469,27 @@ class MyApp extends StatelessWidget {
             brightness: Brightness.dark,
             primarySwatch: Colors.blue,
             fontFamily: 'arial',
-            scaffoldBackgroundColor: Colors.black,
-            cardColor: Colors.grey[900],
+            scaffoldBackgroundColor: AppConstants.SCAFFOLD_BACKGROUND_COLOR,
+            cardColor: AppConstants.CARD_COLOR,
             textTheme: const TextTheme(
-              bodyLarge: TextStyle(color: Colors.white),
-              bodyMedium: TextStyle(color: Colors.white70),
-              displayLarge:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              bodyLarge: TextStyle(color: AppConstants.TEXT_COLOR),
+              bodyMedium: TextStyle(color: AppConstants.TEXT_SECONDARY_COLOR),
+              displayLarge: TextStyle(
+                  color: AppConstants.TEXT_COLOR, fontWeight: FontWeight.bold),
             ),
             inputDecorationTheme: InputDecorationTheme(
               filled: true,
               fillColor: Colors.grey,
               border:
                   OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
-              labelStyle: const TextStyle(color: Colors.white70),
-              hintStyle: const TextStyle(color: Colors.white70),
+              labelStyle:
+                  const TextStyle(color: AppConstants.TEXT_SECONDARY_COLOR),
+              hintStyle:
+                  const TextStyle(color: AppConstants.TEXT_SECONDARY_COLOR),
             ),
             elevatedButtonTheme: ElevatedButtonThemeData(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xff727475),
+                backgroundColor: AppConstants.ELEVATED_BUTTON_COLOR,
                 padding: const EdgeInsets.symmetric(
                     horizontal: 48.0, vertical: 16.0),
                 shape: RoundedRectangleBorder(
@@ -544,13 +498,13 @@ class MyApp extends StatelessWidget {
             ),
             textButtonTheme: TextButtonThemeData(
               style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xffcbced0)),
+                  foregroundColor: AppConstants.TEXT_BUTTON_COLOR),
             ),
             appBarTheme: const AppBarTheme(
-              backgroundColor: Colors.black,
-              iconTheme: IconThemeData(color: Colors.white),
+              backgroundColor: AppConstants.SCAFFOLD_BACKGROUND_COLOR,
+              iconTheme: IconThemeData(color: AppConstants.TEXT_COLOR),
               titleTextStyle: TextStyle(
-                  color: Colors.white,
+                  color: AppConstants.TEXT_COLOR,
                   fontSize: 20,
                   fontWeight: FontWeight.bold),
             ),
@@ -582,11 +536,11 @@ class MyApp extends StatelessWidget {
           onGenerateRoute: (settings) {
             switch (settings.name) {
               case '/':
-                // تمرير معلومات التهيئة إلى SplashScreen
                 return MaterialPageRoute(
                   builder: (_) => SplashScreen(
                     isFirebaseInitialized: isFirebaseInitialized,
                     isFcmInitialized: isFcmInitialized,
+                    isRevenueCatInitialized: isRevenueCatInitialized,
                     initializationError: initializationError,
                   ),
                 );
@@ -631,6 +585,7 @@ class MyApp extends StatelessWidget {
                   builder: (_) => SplashScreen(
                     isFirebaseInitialized: isFirebaseInitialized,
                     isFcmInitialized: isFcmInitialized,
+                    isRevenueCatInitialized: isRevenueCatInitialized,
                     initializationError: initializationError,
                   ),
                 );

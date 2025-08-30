@@ -4,16 +4,15 @@ import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import '../../globals.dart';
+import '../../utils/consts.dart';
 
 class ApiConfig {
-  static const String API_BASE_URL = 'https://flexreminder.com/api';
-  static const String API_PASSWORD = 'api_password_app';
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   FlutterSecureStorage get storage => _storage;
 
   Future<String?> getToken() async {
-    return await _storage.read(key: 'auth_token');
+    return await _storage.read(key: AppConstants.AUTH_TOKEN_KEY);
   }
 
   Future<bool> checkTokenValidity() async {
@@ -26,9 +25,9 @@ class ApiConfig {
 
     try {
       final response = await http.get(
-        Uri.parse('$API_BASE_URL/verify-token'),
+        Uri.parse('${AppConstants.API_BASE_URL}/verify-token'),
         headers: {
-          'X-API-Password': API_PASSWORD,
+          'X-API-Password': AppConstants.API_PASSWORD,
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
         },
@@ -37,7 +36,7 @@ class ApiConfig {
       final data = jsonDecode(response.body);
       if (data['user'] != null && data['user']['id'] != null) {
         await _storage.write(
-            key: 'user_id', value: data['user']['id'].toString());
+            key: AppConstants.USER_ID_KEY, value: data['user']['id'].toString());
         print('User ID saved successfully');
       }
 
@@ -52,8 +51,6 @@ class ApiConfig {
   Future<bool> _checkInternetConnectivity() async {
     var connectivityResult = await (Connectivity().checkConnectivity());
     if (connectivityResult == ConnectivityResult.none) {
-      // Optionally, show a user-friendly message
-      // For example, using a SnackBar or a dialog
       ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
         const SnackBar(
           content: Text('No internet connection'),

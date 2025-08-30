@@ -1,6 +1,6 @@
-// services/auth_service.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../utils/consts.dart';
 import 'api_config.dart';
 
 class AuthService {
@@ -14,11 +14,11 @@ class AuthService {
     String password, {
     String language = 'en',
   }) async {
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/register');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/register');
     final response = await http.post(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: {
@@ -55,11 +55,11 @@ class AuthService {
     String password, {
     String language = 'en',
   }) async {
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/login');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/login');
     final response = await http.post(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: {
@@ -92,11 +92,11 @@ class AuthService {
 
   Future<Map<String, dynamic>> verifyEmail(String email, String code) async {
     final token = await _apiConfig.getToken();
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/verify-email');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/verify-email');
     final response = await http.post(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
@@ -116,11 +116,11 @@ class AuthService {
 
   Future<Map<String, dynamic>> resendVerificationCode(String email) async {
     final token = await _apiConfig.getToken();
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/resend-verification');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/resend-verification');
     final response = await http.post(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
@@ -140,11 +140,11 @@ class AuthService {
 
   Future<Map<String, dynamic>> logout() async {
     final token = await _apiConfig.getToken();
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/logout');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/logout');
     final response = await http.post(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         'Authorization': 'Bearer $token',
       },
     );
@@ -160,11 +160,11 @@ class AuthService {
     final token = await _apiConfig.getToken();
     if (token == null || token.isEmpty) return false;
 
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/check-token');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/check-token');
     final response = await http.get(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         'Authorization': 'Bearer $token',
       },
     );

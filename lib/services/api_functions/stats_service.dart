@@ -1,5 +1,7 @@
+
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../utils/consts.dart';
 import 'api_config.dart';
 
 class StatsService {
@@ -11,14 +13,14 @@ class StatsService {
     if (!await _apiConfig.checkTokenValidity()) {
       throw Exception('Invalid or expired token');
     }
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/statistics/saved-posts');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/statistics/saved-posts');
     final token = await _apiConfig.getToken();
 
     try {
       final response = await http.get(
         url,
         headers: {
-          'X-API-Password': ApiConfig.API_PASSWORD,
+          'X-API-Password': AppConstants.API_PASSWORD,
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
         },
@@ -50,14 +52,14 @@ class StatsService {
     if (!await _apiConfig.checkTokenValidity()) {
       throw Exception('Invalid or expired token');
     }
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/statistics/opened-stats');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/statistics/opened-stats');
     final token = await _apiConfig.getToken();
 
     try {
       final response = await http.get(
         url,
         headers: {
-          'X-API-Password': ApiConfig.API_PASSWORD,
+          'X-API-Password': AppConstants.API_PASSWORD,
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
         },
@@ -90,12 +92,12 @@ class StatsService {
     if (!await _apiConfig.checkTokenValidity()) {
       throw Exception('Invalid or expired token');
     }
-    final url = Uri.parse('${ApiConfig.API_BASE_URL}/update-stats');
+    final url = Uri.parse('${AppConstants.API_BASE_URL}/update-stats');
     final token = await _apiConfig.getToken();
     final response = await http.post(
       url,
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         if (token != null) 'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
@@ -120,9 +122,9 @@ class StatsService {
     final token = await _apiConfig.getToken();
     final response = await http.get(
       Uri.parse(
-          '${ApiConfig.API_BASE_URL}/stats?user_id=$userId&period=$period'),
+          '${AppConstants.API_BASE_URL}/stats?user_id=$userId&period=$period'),
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         'Authorization': 'Bearer $token',
       },
     );
@@ -151,9 +153,9 @@ class StatsService {
     final token = await _apiConfig.getToken();
     final response = await http.get(
       Uri.parse(
-          '${ApiConfig.API_BASE_URL}/remindersData?user_id=$userId&period=$period'),
+          '${AppConstants.API_BASE_URL}/remindersData?user_id=$userId&period=$period'),
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         'Authorization': 'Bearer $token',
       },
     );
@@ -170,9 +172,9 @@ class StatsService {
     }
     final token = await _apiConfig.getToken();
     final response = await http.get(
-      Uri.parse('${ApiConfig.API_BASE_URL}/category-stats?user_id=$userId'),
+      Uri.parse('${AppConstants.API_BASE_URL}/category-stats?user_id=$userId'),
       headers: {
-        'X-API-Password': ApiConfig.API_PASSWORD,
+        'X-API-Password': AppConstants.API_PASSWORD,
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },

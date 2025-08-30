@@ -11,6 +11,7 @@ import 'package:flex_reminder/services/notification_service.dart';
 import 'package:flex_reminder/globals.dart';
 import 'package:flex_reminder/providers/reminders_notifier.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../../utils/consts.dart';
 
 class FcmService {
   // Singleton instance
@@ -29,17 +30,13 @@ class FcmService {
   // إضافة متغير لتتبع التهيئة
   bool _isInitialized = false;
 
-  static const String API_BASE_URL = 'https://flexreminder.com/api';
-  static const String API_PASSWORD = 'api_password_app';
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final _storage = const FlutterSecureStorage();
   final NotificationService _notificationService = NotificationService();
   // متغيرات تتبع حالة التطبيق والرسائل
   static bool _isAppInForeground = true;
   static final Set<String> _processedMessages = <String>{};
-  static const int _maxProcessedMessages = 100;
   static final Map<int, DateTime> _lastProcessedTime = <int, DateTime>{};
-  static const Duration _processDelay = Duration(seconds: 2);
 
   bool _permissionsGranted = false;
   bool get permissionsGranted => _permissionsGranted;
@@ -93,9 +90,9 @@ class FcmService {
 
     _processedMessages.add(messageId);
 
-    if (_processedMessages.length > _maxProcessedMessages) {
+    if (_processedMessages.length > AppConstants.MAX_PROCESSED_MESSAGES) {
       final oldMessages = _processedMessages
-          .take(_processedMessages.length - _maxProcessedMessages);
+          .take(_processedMessages.length - AppConstants.MAX_PROCESSED_MESSAGES);
       _processedMessages.removeAll(oldMessages);
     }
 
@@ -107,7 +104,7 @@ class FcmService {
     final lastProcessed = _lastProcessedTime[reminderId];
 
     if (lastProcessed != null &&
-        now.difference(lastProcessed) < _processDelay) {
+        now.difference(lastProcessed) < AppConstants.PROCESS_DELAY) {
       print('تم تأخير معالجة التذكير $reminderId لتجنب التكرار');
       return false;
     }
@@ -115,7 +112,7 @@ class FcmService {
     _lastProcessedTime[reminderId] = now;
 
     _lastProcessedTime.removeWhere(
-        (key, value) => now.difference(value) > const Duration(minutes: 5));
+        (key, value) => now.difference(value) > AppConstants.LAST_PROCESSED_CLEANUP_DURATION);
 
     return true;
   }
@@ -181,7 +178,7 @@ class FcmService {
   Future<Map<String, dynamic>> init() async {
     if (_isInitialized) {
       print('FCM Service already initialized');
-      final fcmToken = await _storage.read(key: 'fcmToken');
+      final fcmToken = await _storage.read(key: AppConstants.FCM_TOKEN_KEY);
       return {
         'fcmToken': fcmToken,
         'message': 'FCM Service already initialized',
@@ -199,7 +196,7 @@ class FcmService {
       final fcmToken = await getAccessToken();
       if (fcmToken != null) {
         _safeShowMessage("تم الحصول على FCM Token بنجاح", color: Colors.green);
-        await _storage.write(key: 'fcmToken', value: fcmToken);
+        await _storage.write(key: AppConstants.FCM_TOKEN_KEY, value: fcmToken);
       } else {
         _safeShowMessage("فشل في الحصول على FCM Token", color: Colors.red);
         return {
@@ -339,7 +336,7 @@ class FcmService {
         case 'delete':
           try {
             await remindersNotifier.deleteReminderComprehensive(reminderId);
-            //  operationSuccess = true;
+            // operationSuccess = true;
             // successMessage = 'تم حذف التذكير رقم $reminderId';
           } catch (e) {
             errorMessage = 'فشل في حذف التذكير رقم $reminderId: $e';
@@ -420,7 +417,7 @@ class FcmService {
       await NotificationService.instance.scheduleNotification(
         title: title,
         body: body,
-        channelKey: 'scheduled_channel',
+        channelKey: AppConstants.SCHEDULED_CHANNEL_KEY,
         payload: data.cast<String, String>(),
       );
     } catch (e) {
@@ -430,7 +427,7 @@ class FcmService {
 
   Future<String?> _getUserId() async {
     try {
-      return await _storage.read(key: 'user_id');
+      return await _storage.read(key: AppConstants.USER_ID_KEY);
     } catch (e) {
       print('خطأ في الحصول على user_id: $e');
       return null;
@@ -483,12 +480,12 @@ class FcmService {
       }
 
       final jsonString = await rootBundle.loadString(
-        'assets/flex-reminders-app-7e58d9767343.json',
+        AppConstants.SERVICE_ACCOUNT_PATH,
       );
 
       final accountCredentials =
           auth.ServiceAccountCredentials.fromJson(jsonString);
-      final scopes = ['https://www.googleapis.com/auth/firebase.messaging'];
+      final scopes = [AppConstants.FIREBASE_MESSAGING_SCOPE];
       final client =
           await auth.clientViaServiceAccount(accountCredentials, scopes);
       _safeShowMessage(client.credentials.accessToken.data,
@@ -506,7 +503,7 @@ class FcmService {
   }
 
   Future<void> _setupMessageHandlers() async {
-    String? userId = await _storage.read(key: 'user_id');
+    String? userId = await _storage.read(key: AppConstants.USER_ID_KEY);
     final userTopic = userId != null ? 'user_$userId' : 'unknown_user';
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -545,7 +542,7 @@ class FcmService {
 
     _firebaseMessaging.onTokenRefresh.listen((String newToken) {
       print('🔄 تم تحديث FCM Token');
-      _storage.write(key: 'fcmToken', value: newToken);
+      _storage.write(key: AppConstants.FCM_TOKEN_KEY, value: newToken);
       sendFcmTokenToBackend();
     });
 
@@ -634,9 +631,9 @@ class FcmService {
 
   Future<String> sendFcmTokenToBackend() async {
     try {
-      String? token = await _storage.read(key: 'auth_token');
-      String? fcmToken = await _storage.read(key: 'fcmToken');
-      String? userId = await _storage.read(key: 'user_id');
+      String? token = await _storage.read(key: AppConstants.AUTH_TOKEN_KEY);
+      String? fcmToken = await _storage.read(key: AppConstants.FCM_TOKEN_KEY);
+      String? userId = await _storage.read(key: AppConstants.USER_ID_KEY);
 
       if (token == null) {
         const message = 'توكن المصادقة غير موجود. يرجى تسجيل الدخول مرة أخرى';
@@ -651,7 +648,7 @@ class FcmService {
       }
 
       final response = await http.post(
-        Uri.parse('$API_BASE_URL/fcm/subscribe'),
+        Uri.parse('${AppConstants.API_BASE_URL}/fcm/subscribe'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
@@ -682,7 +679,7 @@ class FcmService {
   }
 
   Future<bool> isTokenValid() async {
-    final token = await _storage.read(key: 'auth_token');
+    final token = await _storage.read(key: AppConstants.AUTH_TOKEN_KEY);
     return token != null && token.isNotEmpty;
   }
 
@@ -714,7 +711,7 @@ class FcmService {
     try {
       final newToken = await getAccessToken();
       if (newToken != null) {
-        await _storage.write(key: 'fcmToken', value: newToken);
+        await _storage.write(key: AppConstants.FCM_TOKEN_KEY, value: newToken);
         await sendFcmTokenToBackend();
       }
     } catch (e) {
@@ -731,9 +728,9 @@ class FcmService {
         }
       }
 
-      await _storage.delete(key: 'fcmToken');
-      await _storage.delete(key: 'auth_token');
-      await _storage.delete(key: 'user_id');
+      await _storage.delete(key: AppConstants.FCM_TOKEN_KEY);
+      await _storage.delete(key: AppConstants.AUTH_TOKEN_KEY);
+      await _storage.delete(key: AppConstants.USER_ID_KEY);
 
       print('تم تسجيل الخروج وإلغاء FCM Token');
     } catch (e) {

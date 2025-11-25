@@ -1,0 +1,2 @@
+/home/user/flex_reminder_app/android/app/.cxx/release/1k40o475/armeabi-v7a/CMakeFiles/edit_cache.dir
+/home/user/flex_reminder_app/android/app/.cxx/release/1k40o475/armeabi-v7a/CMakeFiles/rebuild_cache.dir

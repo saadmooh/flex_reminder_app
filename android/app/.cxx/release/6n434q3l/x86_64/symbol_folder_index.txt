@@ -1,0 +1,1 @@
+/home/user/flex_reminder_app/android/app/build/intermediates/cxx/release/6n434q3l/obj/x86_64

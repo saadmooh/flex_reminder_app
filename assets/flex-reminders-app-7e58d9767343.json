@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "flex-reminders-app",
+  "private_key_id": "7e58d97673432431642b6787b6875e3f913973bf",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDb/mmqvtn5Bgeh\nTTdAHtUfOgevVUN04GqRAEsHNWoJINmb2E+tqlBuesSmR9bH2NSDJ4Q7zw1VXwkd\nBBJAZajwoBYiPmLO3W9MpQL4C6PLyUIuBMrLxSiULv562xaqDGB11s0uaJXyaMDq\nBZnpA/SiAHK3OBhBsbGbVr7SleHwyH2FyGoaBmfghf+eP0ivqR07SvRg0eVqLvhO\nv43p773UISA+DhKHY4dMPYCA8Pg/MTpjuWgA1QavnammL9iIFvRtypD59W9RpZBK\nMuCBrGeuI6je8fCaGZYhr9acQlOxvGCl5cUoa3r8YYfrK+udkl65OZB/Rx/l6lLn\n+dqVGEjdAgMBAAECggEAIhdu8JLa3IherlR0927PwCMSBc3Ewlv0p7vP5LIWWIvK\nrSf8UQFPrY9A4jPHyPiFFj4Nc+dGPbCYjPKQkYIvh/qG84+PaFdQZCQ+LYpAO9hY\ndSEw/Br1iuEtdoR1Iq0AVcKP0V1Lv2EUZC+yBjYitugy3snGmIec6mGq+J9ZgCKI\nBVmTPtCG5Yhogoom7WFre+m6Smm4z4hKPiK1u9/oEoQqrYP5TCkZaXgK6bwlEZTe\n0IrcyqHIH2HRqAtnXT8yhrEUKvBpggyi4UhNumJdDlhIAba3zPVAAf7O3ajXPmgf\nkQb9sBerQO9BTyIXFnQNjRyYWeY6ggovsImY4JiKAQKBgQD7LrDDIxa0IeYtf6DY\nffIYsOss6+93MkDBvPY9e8pmmOY4U/lmOOZ2ty1vWwnSRMi0BCb5Twb7KqjRMnG/\n1HXQx+aU2iJfkoWOVmDppaWJ6b22dGa0ROrxavMiZQcUa45QcCPBu4h0RAy2r9HB\nJPlM+pyhccAoxfbYkIH64Nr5PQKBgQDgNpX5Osx4aAgGRhN2J5+ao3MVFwOfSicI\n7zqlqjKM6UBr2sn9eBHYjvn56bufByoaWhXGx56WOmVxde8dBVXtjpwF53KPB3b/\ne/UTuqaXK5yJNAdQzw5A6fy1HIUHovTyCJ+p6fqi4tEub8wlNuFcuwesPg+TZmlm\n6gnV+ClIIQKBgQDXeC8DxibksSu+HfzBmhDCo4mqSF5slrw8NbfZ+EYhCsp6yXZo\n/Sid7/bWzna3XG/7FJDGTseDUA3vHuG7GCtUxRaE3DaeW5ecCXcrFwDRNKScTnAH\n9hLAs+kLuTSAjN9RG1FhEFk2u2VYlaxOjkQZh+YzC9w2XdOp5RTLPHY7VQKBgQDT\nLNZoXScEKQeV0R63ZG6A2X2k2X5B4zeMxLV6Hylpaq+QZgtlPlegnll3NtvN1pOj\nKkHkbVNCr1GoYamKreHW00DEls9hQ2ijDP8xS9VoAF15JJXXWI1WOowXkPsCzErk\nQ5cOFCBKllLq58VhL6VnD4kUg4dsD0Mq+Te2XfuTwQKBgQDip6rNA81/NsHY1EVG\nqc9/UoundMZA9RtsEI3/nky559pPv0zdn4OYTTOlDvft1CWSLvDfb8pfUYkkR1hT\nRuHeYAPVBeeCurYhAgcxTx6oOS7EwMCfqs6E1Sew8E2BrvcPYGz7bjfbNV4gqdI2\nvFNCpxeQah5t61wbkmYij++LPQ==\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@flex-reminders-app.iam.gserviceaccount.com",
+  "client_id": "102977330517219179353",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40flex-reminders-app.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

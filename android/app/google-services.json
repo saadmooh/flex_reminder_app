@@ -1,0 +1,70 @@
+{
+  "project_info": {
+    "project_number": "1038373651011",
+    "project_id": "flex-reminders-app",
+    "storage_bucket": "flex-reminders-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1038373651011:android:4a90ebfcca10f9b24acaf6",
+        "android_client_info": {
+          "package_name": "com.saadmohammed2000.flex_reminder"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1038373651011-2rteenih6mqiklspbkkna322po39vgd6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.saadmohammed2000.flex_reminder",
+            "certificate_hash": "6b4118869aca198c6a517355de5fbc90e7f494cb"
+          }
+        },
+        {
+          "client_id": "1038373651011-auek9rne8svqltlse42p7irs1d97gpb5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.saadmohammed2000.flex_reminder",
+            "certificate_hash": "e6cae99a3671dc516cebb9b195b835a246be1907"
+          }
+        },
+        {
+          "client_id": "1038373651011-tbdbjp5c00eh5s36lbjsdmh39kenh243.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.saadmohammed2000.flex_reminder",
+            "certificate_hash": "4f2f0bd01e81193cb04f23f5e7260ef1017699c1"
+          }
+        },
+        {
+          "client_id": "1038373651011-aajl0k8goi5hknl4l0sqsnb78m7lnrfj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCDiatYxR5UxZGt9gtttgTFrpu7l9xUIXU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1038373651011-aajl0k8goi5hknl4l0sqsnb78m7lnrfj.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1038373651011-b1qh409ongqfh8fulciolkip66ofdkfq.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.riverpodCounter"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

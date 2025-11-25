@@ -1,0 +1,2 @@
+/home/user/flex_reminder_app/android/app/.cxx/Debug/5yw6w6sq/x86/CMakeFiles/edit_cache.dir
+/home/user/flex_reminder_app/android/app/.cxx/Debug/5yw6w6sq/x86/CMakeFiles/rebuild_cache.dir

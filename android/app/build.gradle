@@ -1,8 +1,9 @@
 import java.util.Properties
 import java.io.FileInputStream
+
 plugins {
     id "com.android.application"
-    id "kotlin-android" // بلجن رسمي لكوتلن
+    id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
     id "com.google.gms.google-services"
 }
@@ -18,7 +19,6 @@ if (localPropertiesFile.exists()) {
 def flutterVersionCode = localProperties.getProperty('flutter.versionCode') ?: '1'
 def flutterVersionName = localProperties.getProperty('flutter.versionName') ?: '1.0'
 
-// Fixed: Changed 'val' to 'def' for Groovy syntax
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
@@ -27,18 +27,23 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace "com.saadmohammed2000.flex_reminder"
-    compileSdk 35
+    compileSdk 36  // ✅ تحديث من 35 إلى 36
 
     defaultConfig {
-       applicationId "com.saadmohammed2000.flex_reminder"
-
-        minSdkVersion 23 // ✅ مهم بسبب NDK
-        targetSdkVersion 35
+        applicationId "com.saadmohammed2000.flex_reminder"
+        minSdkVersion 24
+        targetSdkVersion 36  // ✅ تحديث من 35 إلى 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
+        
+        // ✅ إضافة دعم 16 KB page size
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+        }
     }
-     signingConfigs {
+    
+    signingConfigs {
         release {
             keyAlias keystoreProperties['keyAlias']
             keyPassword keystoreProperties['keyPassword']
@@ -46,23 +51,24 @@ android {
             storePassword keystoreProperties['storePassword']
         }
     }
-     buildTypes {
+    
+    buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now,
-            // so `flutter run --release` works.
             signingConfig signingConfigs.release
+            // ✅ إضافة تحسينات للبناء
+            minifyEnabled false
+            shrinkResources false
         }
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17  // ✅ تحديث من 1.8
+        targetCompatibility JavaVersion.VERSION_17  // ✅ تحديث من 1.8
         coreLibraryDesugaringEnabled true
     }
 
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'  // ✅ تحديث من 1.8
     }
 
     sourceSets {
@@ -75,10 +81,15 @@ flutter {
 }
 
 dependencies {
-    def kotlin_version = "1.9.23" // ✅ عرّف النسخة هنا
-
+    def kotlin_version = "1.9.23"
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    
+    // Core Android libraries
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:1.2.2'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'  // ✅ تحديث النسخة
 
     implementation platform("com.google.firebase:firebase-bom:33.16.0")
     implementation "com.google.firebase:firebase-analytics"

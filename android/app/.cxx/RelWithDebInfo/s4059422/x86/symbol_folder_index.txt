@@ -1,1 +1,0 @@
-/home/user/flex_reminder_app/android/app/build/intermediates/cxx/RelWithDebInfo/s4059422/obj/x86

@@ -1,1 +1,0 @@
-/home/user/flex_reminder_app/android/app/build/intermediates/cxx/RelWithDebInfo/5vt6t1g6/obj/arm64-v8a

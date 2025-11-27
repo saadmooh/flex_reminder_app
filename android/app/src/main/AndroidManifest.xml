@@ -11,8 +11,6 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
-    
-    <!-- أذونات إضافية لضمان عمل FCM عند إغلاق التطبيق -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -20,23 +18,34 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_WAKEUP" />
     
-    <!-- إذن مخصص للتطبيق لـ FCM -->
-    <permission
-        android:name="com.saadmohammed2000.flex_reminder.permission.C2D_MESSAGE"
-        android:protectionLevel="signature" />
-    <uses-permission android:name="com.saadmohammed2000.flex_reminder.permission.C2D_MESSAGE" />
-    
     <application
-        android:label="flex_reminder"
+        android:label="Smart Reminder"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
         android:usesCleartextTraffic="true"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
         android:supportsRtl="true">
+        
+        <!-- ==================== Alarm Receivers ==================== -->
+        <receiver
+            android:name="com.saadmohammed2000.flex_reminder.AlarmReceiver"
+            android:directBootAware="true"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+               <action android:name="android.intent.action.NOTIFY" />
+        <action android:name="ALARM_ACTION" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="com.saadmohammed2000.flex_reminder.NotificationDismissReceiver"
+            android:enabled="true"
+            android:exported="false" />
         
         <!-- ==================== Firebase Cloud Messaging Services ==================== -->
         
-        <!-- خدمة FCM الأساسية -->
         <service
             android:name="io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingService"
             android:directBootAware="true"
@@ -47,7 +56,6 @@
             </intent-filter>
         </service>
 
-        <!-- خدمة مخصصة للتعامل مع FCM عند إغلاق التطبيق -->
         <service
             android:name="com.saadmohammed2000.flex_reminder.MyFirebaseMessagingService"
             android:directBootAware="true"
@@ -58,7 +66,6 @@
             </intent-filter>
         </service>
         
-        <!-- خدمة مقدمة لضمان بقاء التطبيق نشطاً لـ FCM -->
         <service
             android:name="com.saadmohammed2000.flex_reminder.FCMForegroundService"
             android:enabled="true"
@@ -68,7 +75,6 @@
             
         <!-- ==================== FCM Receivers ==================== -->
         
-        <!-- مستقبل FCM الرئيسي - FIXED -->
         <receiver
             android:name="io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingReceiver"
             android:directBootAware="true"
@@ -80,7 +86,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- مستقبل مخصص لـ FCM -->
         <receiver
             android:name="com.saadmohammed2000.flex_reminder.MyFCMReceiver"
             android:directBootAware="true"
@@ -93,7 +98,8 @@
             </intent-filter>
         </receiver>
         
-        <!-- مستقبل إعادة التشغيل -->
+        <!-- ==================== Boot Receiver ==================== -->
+        
         <receiver
             android:name="com.saadmohammed2000.flex_reminder.BootReceiver"
             android:directBootAware="true"
@@ -112,7 +118,6 @@
         
         <!-- ==================== Local Notifications Receivers ==================== -->
         
-        <!-- مستقبل الإشعارات المحلية عند التشغيل -->
         <receiver 
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
             android:directBootAware="true"
@@ -125,13 +130,11 @@
             </intent-filter>
         </receiver>
         
-        <!-- مستقبل الإشعارات المجدولة -->
         <receiver 
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
             android:directBootAware="true"
             android:exported="false" />
 
-        <!-- مستقبل أحداث الإشعارات -->
         <receiver 
             android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
             android:directBootAware="true"
@@ -150,32 +153,30 @@
             android:screenOrientation="portrait"
             android:excludeFromRecents="false"
             android:taskAffinity=""
-            android:allowTaskReparenting="false">
+            android:allowTaskReparenting="false"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true">
             
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme" />
               
-            <!-- Intent filter للتشغيل الأساسي -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- Intent filter للمشاركة -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/*" />
             </intent-filter>
             
-            <!-- Intent filter للإشعارات -->
             <intent-filter android:autoVerify="true">
                 <action android:name="FLUTTER_NOTIFICATION_CLICK" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
-            <!-- Intent filter لفتح التطبيق من FCM -->
             <intent-filter>
                 <action android:name="FCM_NOTIFICATION_CLICK" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -186,12 +187,10 @@
         
         <!-- ==================== Meta Data ==================== -->
         
-        <!-- Flutter embedding -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
             
-        <!-- Firebase messaging configurations -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@mipmap/launcher_icon" />
@@ -204,7 +203,6 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="scheduled_channel" />
 
-        <!-- تمكين استقبال الرسائل حتى عند إغلاق التطبيق -->
         <meta-data
             android:name="firebase_messaging_auto_init_enabled"
             android:value="true" />
@@ -213,30 +211,27 @@
             android:name="firebase_analytics_collection_enabled"
             android:value="true" />
 
-        <!-- تم إزالة automotive_app_desc لأنه غير مطلوب -->
-
     </application>
 
-    <!-- ==================== Queries للأمان ==================== -->
-    
     <queries>
-        <!-- للتعامل مع Google Services -->
         <package android:name="com.google.android.gms" />
         
-        <!-- للتعامل مع متصفح الويب -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
         
-        <!-- للتعامل مع تطبيقات الإعدادات -->
         <intent>
             <action android:name="android.settings.APPLICATION_DETAILS_SETTINGS" />
         </intent>
         
-        <!-- للتعامل مع إعدادات البطارية -->
         <intent>
             <action android:name="android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+        </intent>
+
+        <!-- للوصول إلى إعدادات الإنذارات الدقيقة -->
+        <intent>
+            <action android:name="android.settings.REQUEST_SCHEDULE_EXACT_ALARM" />
         </intent>
     </queries>
 

@@ -64,4 +64,5 @@ build/
 .svn/
 
 # Project specific
-lib.zip
+lib.zipandroid/gradle/gradle-*/
+android/.gradle/

@@ -1,12 +1,61 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter/material.dart'; // تم الإضافة
 import '../../utils/consts.dart';
 import 'api_config.dart';
+import 'exceptions.dart'; // تم الإضافة
+import '../authentication_service.dart'; // تم الإضافة
+import '../../globals.dart'; // تم الإضافة
 
 class AuthService {
   final ApiConfig _apiConfig;
 
   AuthService(this._apiConfig);
+
+  // دالة مساعدة للتعامل مع انتهاء الاشتراك لتجنب تكرار الكود
+  Future<void> _handleNoValidSubscription() async {
+    try {
+      // استخدام navigatorKey.currentState للوصول إلى الـ context
+      final navigator = navigatorKey.currentState;
+
+      if (navigator != null && navigator.mounted) {
+        final context = navigator.context;
+
+        // عرض رسالة انتهاء الاشتراك أولاً
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('انتهى اشتراكك، يرجى التجديد للمتابعة'),
+            backgroundColor: Colors.orange.shade700,
+            duration: const Duration(seconds: 6),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        // محاكاة ضغط زر تسجيل الخروج
+        final authService = AuthenticationService(context);
+        await authService.logout();
+      } else {
+        // حل احتياطي في حال عدم توفر الـ navigator
+        print('⚠️ Navigator not available, forcing navigation.');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (navigatorKey.currentState != null) {
+            navigatorKey.currentState!
+                .pushNamedAndRemoveUntil('/auth', (_) => false);
+          }
+        });
+      }
+    } catch (e) {
+      print('Critical logout error in AuthService: $e');
+      // آخر محاولة للانتقال
+      try {
+        navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/auth', (_) => false);
+      } catch (navError) {
+        print('Final navigation attempt failed: $navError');
+      }
+    }
+  }
+
   static void _safeShowMessage(String message) {
     // if (kDebugMode) {
     //   debugPrint('SplashScreen Message: $message');
@@ -28,76 +77,87 @@ class AuthService {
     // }
   }
 
- // في AuthService
-Future<Map<String, dynamic>> loginWithGoogle({
-  required String firebaseToken,
-  required Map<String, String> googleUser, // تغيير من dynamic إلى String
-  String language = 'en',
-}) async {
-  try {
-    final url = Uri.parse('${AppConstants.API_BASE_URL}/auth/google');
-
-    final requestBody = {
-      'id_token': firebaseToken,
-      'language': language,
-      'google_user': googleUser,
-    };
-
-    print('Request URL: $url');
-    print('Request Body: $requestBody');
-
-    final response = await http
-        .post(
-          url,
-          headers: {
-            'X-API-Password': AppConstants.API_PASSWORD,
-            'Content-Type': 'application/json', // تغيير إلى JSON
-          },
-          body: jsonEncode(requestBody), // استخدام JSON encoding
-        )
-        .timeout(const Duration(seconds: 30));
-
-    print('=== Google Sign-In API Response ===');
-    print('Status Code: ${response.statusCode}');
-    print('Response Body: ${response.body}');
-
-    Map<String, dynamic> responseData;
+  Future<Map<String, dynamic>> loginWithGoogle({
+    required String firebaseToken,
+    required Map<String, String> googleUser,
+    String language = 'en',
+  }) async {
     try {
-      responseData = json.decode(response.body);
-    } catch (e) {
-      print('JSON Decode Error: $e');
-      return {
-        'success': false,
-        'statusCode': response.statusCode,
-        'error': 'Invalid JSON response from server',
-        'raw_response': response.body,
-      };
-    }
+      final url = Uri.parse('${AppConstants.API_BASE_URL}/auth/google');
 
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      // تحسين معالجة الاستجابة بناءً على رد السيرفر
-      return {
-        'success': responseData['success'] ?? true,
-        'status': responseData['status'] ?? 'success',
-        'data': responseData['data'] ?? responseData,
-        'activated': responseData['activated'] ?? responseData['data']?['activated'] ?? true,
+      final requestBody = {
+        'id_token': firebaseToken,
+        'language': language,
+        'google_user': googleUser,
       };
-    } else {
+
+      print('Request URL: $url');
+      print('Request Body: $requestBody');
+
+      final response = await http
+          .post(
+            url,
+            headers: {
+              'X-API-Password': AppConstants.API_PASSWORD,
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(requestBody),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      print('=== Google Sign-In API Response ===');
+      print('Status Code: ${response.statusCode}');
+      print('Response Body: ${response.body}');
+
+      Map<String, dynamic> responseData;
+      try {
+        responseData = json.decode(response.body);
+      } catch (e) {
+        print('JSON Decode Error: $e');
+        return {
+          'success': false,
+          'statusCode': response.statusCode,
+          'error': 'Invalid JSON response from server',
+          'raw_response': response.body,
+        };
+      }
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // التحقق من خطأ انتهاء الاشتراك حتى في حالة النجاح
+        if (responseData['success'] == false &&
+            responseData['message'] == 'no_valid_subscription') {
+          await _handleNoValidSubscription();
+          throw NoValidSubscriptionException('لا يوجد اشتراك صالح');
+        }
+
+        return {
+          'success': responseData['success'] ?? true,
+          'status': responseData['status'] ?? 'success',
+          'data': responseData['data'] ?? responseData,
+          'activated': responseData['activated'] ?? responseData['data']?['activated'] ?? true,
+        };
+      } else {
+        // التحقق من خطأ انتهاء الاشتراك في حالة الفشل
+        if (responseData['message'] == 'no_valid_subscription') {
+          await _handleNoValidSubscription();
+          throw NoValidSubscriptionException('لا يوجد اشتراك صالح');
+        }
+        return {
+          'success': false,
+          'statusCode': response.statusCode,
+          'message': responseData['message'] ?? 'Google Sign-In failed',
+          'error': responseData['error'] ?? 'Unknown error',
+        };
+      }
+    } catch (e) {
+      print('Google Sign-In API Exception: $e');
       return {
         'success': false,
-        'statusCode': response.statusCode,
-        'message': responseData['message'] ?? 'Google Sign-In failed',
-        'error': responseData['error'] ?? 'Unknown error',
+        'error': 'Network error during Google Sign-In: ${e.toString()}',
       };
     }
-  } catch (e) {
-    print('Google Sign-In API Exception: $e');
-    return {
-      'success': false,
-      'error': 'Network error during Google Sign-In: ${e.toString()}',
-    };
   }
-}
+
   Future<Map<String, dynamic>> register(
     String name,
     String email,
@@ -170,12 +230,24 @@ Future<Map<String, dynamic>> loginWithGoogle({
     print('Login Response: $responseData');
 
     if (response.statusCode == 200) {
+      // التحقق من خطأ انتهاء الاشتراك
+      if (responseData['success'] == false &&
+          responseData['message'] == 'no_valid_subscription') {
+        await _handleNoValidSubscription();
+        throw NoValidSubscriptionException('لا يوجد اشتراك صالح');
+      }
+
       return {
         'success': true,
         'statusCode': response.statusCode,
         'data': responseData,
       };
     } else {
+      // التحقق من خطأ انتهاء الاشتراك في حالة الفشل
+      if (responseData['message'] == 'no_valid_subscription') {
+        await _handleNoValidSubscription();
+        throw NoValidSubscriptionException('لا يوجد اشتراك صالح');
+      }
       return {
         'success': false,
         'statusCode': response.statusCode,
@@ -208,12 +280,23 @@ Future<Map<String, dynamic>> loginWithGoogle({
     print('Firebase Login Response: $responseData');
 
     if (response.statusCode == 200) {
+      // التحقق من خطأ انتهاء الاشتراك
+      if (responseData['success'] == false &&
+          responseData['message'] == 'no_valid_subscription') {
+        await _handleNoValidSubscription();
+        throw NoValidSubscriptionException('لا يوجد اشتراك صالح');
+      }
       return {
         'success': true,
         'statusCode': response.statusCode,
         'data': responseData,
       };
     } else {
+      // التحقق من خطأ انتهاء الاشتراك في حالة الفشل
+      if (responseData['message'] == 'no_valid_subscription') {
+        await _handleNoValidSubscription();
+        throw NoValidSubscriptionException('لا يوجد اشتراك صالح');
+      }
       return {
         'success': false,
         'statusCode': response.statusCode,
@@ -245,12 +328,23 @@ Future<Map<String, dynamic>> loginWithGoogle({
     _safeShowMessage('Google Sign-In Response: $responseData');
 
     if (response.statusCode == 200) {
+      // التحقق من خطأ انتهاء الاشتراك
+      if (responseData['success'] == false &&
+          responseData['message'] == 'no_valid_subscription') {
+        await _handleNoValidSubscription();
+        throw NoValidSubscriptionException('لا يوجد اشتراك صالح');
+      }
       return {
         'success': true,
         'statusCode': response.statusCode,
         'data': responseData,
       };
     } else {
+      // التحقق من خطأ انتهاء الاشتراك في حالة الفشل
+      if (responseData['message'] == 'no_valid_subscription') {
+        await _handleNoValidSubscription();
+        throw NoValidSubscriptionException('لا يوجد اشتراك صالح');
+      }
       return {
         'success': false,
         'statusCode': response.statusCode,
@@ -277,8 +371,19 @@ Future<Map<String, dynamic>> loginWithGoogle({
     print('Verify Email Response: $responseData');
 
     if (response.statusCode == 200) {
+      // التحقق من خطأ انتهاء الاشتراك
+      if (responseData['success'] == false &&
+          responseData['message'] == 'no_valid_subscription') {
+        await _handleNoValidSubscription();
+        throw NoValidSubscriptionException('لا يوجد اشتراك صالح');
+      }
       return {'success': true, 'data': responseData};
     } else {
+      // التحقق من خطأ انتهاء الاشتراك في حالة الفشل
+      if (responseData['message'] == 'no_valid_subscription') {
+        await _handleNoValidSubscription();
+        throw NoValidSubscriptionException('لا يوجد اشتراك صالح');
+      }
       return {
         'success': false,
         'error': responseData['message'] ?? 'Verification failed.'
@@ -301,8 +406,19 @@ Future<Map<String, dynamic>> loginWithGoogle({
 
     final responseData = json.decode(response.body);
     if (response.statusCode == 200) {
+      // التحقق من خطأ انتهاء الاشتراك
+      if (responseData['success'] == false &&
+          responseData['message'] == 'no_valid_subscription') {
+        await _handleNoValidSubscription();
+        throw NoValidSubscriptionException('لا يوجد اشتراك صالح');
+      }
       return {'success': true, 'data': responseData};
     } else {
+      // التحقق من خطأ انتهاء الاشتراك في حالة الفشل
+      if (responseData['message'] == 'no_valid_subscription') {
+        await _handleNoValidSubscription();
+        throw NoValidSubscriptionException('لا يوجد اشتراك صالح');
+      }
       return {
         'success': false,
         'error': responseData['message'] ?? 'Failed to resend code.'

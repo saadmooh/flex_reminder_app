@@ -1,0 +1,1 @@
+/home/user/flex_reminder_app/android/app/build/intermediates/cxx/debug/58a993lu/obj/armeabi-v7a

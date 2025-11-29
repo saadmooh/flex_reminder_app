@@ -80,49 +80,49 @@ Future<void> _handleFollowUpNotification(
             '🕐 New reminder time received: $newReminderTime');
 
         // إرسال إشعار متابعة مع المعلومات المحدثة
-        // await AwesomeNotifications().createNotification(
-        //   content: NotificationContent(
-        //     id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-        //     channelKey: 'scheduled_channel',
-        //     title: '🔄 $title - تم إعادة الجدولة',
-        //     body: 'تم إعادة جدولة التذكير بنجاح للوقت التالي: $newReminderTime',
-        //     category: NotificationCategory.Reminder,
-        //     notificationLayout: NotificationLayout.Default,
-        //     payload: {
-        //       'id': reminderId,
-        //       'url': url,
-        //       'importance': importance,
-        //       'isFollowUp': 'true',
-        //       'rescheduled': 'true',
-        //       'newReminderTime': newReminderTime,
-        //     },
-        //     criticalAlert: true,
-        //     locked: true,
-        //   ),
-        // );
+        await AwesomeNotifications().createNotification(
+          content: NotificationContent(
+            id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+            channelKey: 'scheduled_channel',
+            title: '🔄 $title - تم إعادة الجدولة',
+            body: 'تم إعادة جدولة التذكير بنجاح للوقت التالي: $newReminderTime',
+            category: NotificationCategory.Reminder,
+            notificationLayout: NotificationLayout.Default,
+            payload: {
+              'id': reminderId,
+              'url': url,
+              'importance': importance,
+              'isFollowUp': 'true',
+              'rescheduled': 'true',
+              'newReminderTime': newReminderTime,
+            },
+            criticalAlert: true,
+            locked: true,
+          ),
+        );
 
         NotificationService.showSuccessSnackBar(
             '📨 Follow-up notification sent with reschedule info');
       } else {
         // إرسال إشعار متابعة عادي في حالة عدم وجود وقت جديد
-        // await AwesomeNotifications().createNotification(
-        //   content: NotificationContent(
-        //     id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-        //     channelKey: 'scheduled_channel',
-        //     title: '🔔 $title - متابعة',
-        //     body: body,
-        //     category: NotificationCategory.Reminder,
-        //     notificationLayout: NotificationLayout.Default,
-        //     payload: {
-        //       'id': reminderId,
-        //       'url': url,
-        //       'importance': importance,
-        //       'isFollowUp': 'true',
-        //     },
-        //     criticalAlert: true,
-        //     locked: true,
-        //   ),
-        // );
+        await AwesomeNotifications().createNotification(
+          content: NotificationContent(
+            id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+            channelKey: 'scheduled_channel',
+            title: '🔔 $title - متابعة',
+            body: body,
+            category: NotificationCategory.Reminder,
+            notificationLayout: NotificationLayout.Default,
+            payload: {
+              'id': reminderId,
+              'url': url,
+              'importance': importance,
+              'isFollowUp': 'true',
+            },
+            criticalAlert: true,
+            locked: true,
+          ),
+        );
 
         NotificationService.showSuccessSnackBar(
             '📨 Standard follow-up notification sent');
@@ -409,100 +409,102 @@ class NotificationService {
   @pragma("vm:entry-point")
   static Future<void> onNotificationActionReceived(
       ReceivedAction receivedAction) async {
-    NotificationService.showSuccessSnackBar(
-        '👆 Notification tapped: ${receivedAction.title}');
-    final payload = receivedAction.payload ?? {};
-    final String reminderIdStr = payload['id'] ?? '';
-    final String? url = payload['url'];
-    final int? reminderId = int.tryParse(reminderIdStr);
+    try {
+      final payload = receivedAction.payload ?? {};
+      final String reminderIdStr = payload['id'] ?? '';
+      final String? url = payload['url'];
+      final int? reminderId = int.tryParse(reminderIdStr);
 
-    // === START: التعديلات الجديدة ===
-    if (reminderId != null) {
-      // 1. تحديث الواجهة فوراً بشكل استباقي
-      // نحصل على نسخة RemindersNotifier ونقوم بالتحديث المحلي
-      final remindersNotifier = RemindersNotifier.instance;
-      await remindersNotifier.markReminderAsReadLocally(reminderId);
+      // === START: التعديلات الجديدة ===
+      if (reminderId != null) {
+        // 1. تحديث الواجهة فوراً بشكل استباقي
+        // نحصل على نسخة RemindersNotifier ونقوم بالتحديث المحلي
+        final remindersNotifier = RemindersNotifier.instance;
+        await remindersNotifier.markReminderAsReadLocally(reminderId);
 
-      // 2. إلغاء أي إشعارات مستقبلية لهذا التذكير لأنه أصبح مقروءاً
-      await NotificationService.instance
-          .cancelReminderNotifications(reminderId);
-      NotificationService.showSuccessSnackBar(
-          '✅ تم إلغاء الإشعارات المتبقية للتذكير $reminderId.');
-    }
-    // === END: التعديلات الجديدة ===
+        // 2. إلغاء أي إشعارات مستقبلية لهذا التذكير لأنه أصبح مقروءاً
+        await NotificationService.instance
+            .cancelReminderNotifications(reminderId);
+        NotificationService.showSuccessSnackBar(
+            '✅ تم إلغاء الإشعارات المتبقية للتذكير $reminderId.');
+      }
+      // === END: التعديلات الجديدة ===
 
-    // فتح الرابط فوراً للمستخدم (أولوية قصوى)
-    if (url != null && url.isNotEmpty) {
-      final Uri? uri = Uri.tryParse(url);
-      if (uri != null && await canLaunchUrl(uri)) {
-        try {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-          NotificationService.showSuccessSnackBar(
-              '🌐 Successfully launched URL immediately: $url');
+      // فتح الرابط فوراً للمستخدم (أولوية قصوى)
+      if (url != null && url.isNotEmpty) {
+        final Uri? uri = Uri.tryParse(url);
+        if (uri != null && await canLaunchUrl(uri)) {
+          try {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+            NotificationService.showSuccessSnackBar(
+                '🌐 Successfully launched URL immediately: $url');
 
-          // جدولة مهمة في الخلفية لتحديث بيانات السيرفر (تبقى كما هي)
-          if (reminderId != null) {
-            await _instance._scheduleMarkReminderAsReadTask(
-                reminderId, url, true);
+            // جدولة مهمة في الخلفية لتحديث بيانات السيرفر (تبقى كما هي)
+            if (reminderId != null) {
+              await _instance._scheduleMarkReminderAsReadTask(
+                  reminderId, url, true);
+            }
+          } catch (e) {
+            NotificationService.showErrorSnackBar('❌ Error launching URL: $e');
+            NotificationService.showErrorSnackBar('خطأ في فتح الرابط: $url');
+
+            // حتى لو فشل فتح الرابط، نحدث بيانات السيرفر
+            if (reminderId != null) {
+              await _instance._scheduleMarkReminderAsReadTask(
+                  reminderId, url, false);
+            }
           }
-        } catch (e) {
-          NotificationService.showErrorSnackBar('❌ Error launching URL: $e');
-          NotificationService.showErrorSnackBar('خطأ في فتح الرابط: $url');
+        } else {
+          NotificationService.showErrorSnackBar(
+              '❌ Invalid or unsupported URL: $url');
+          NotificationService.showErrorSnackBar('الرابط غير صالح: $url');
 
-          // حتى لو فشل فتح الرابط، نحدث بيانات السيرفر
+          // تحديث البيانات حتى لو كان الرابط غير صالح
           if (reminderId != null) {
             await _instance._scheduleMarkReminderAsReadTask(
                 reminderId, url, false);
           }
         }
       } else {
-        NotificationService.showErrorSnackBar(
-            '❌ Invalid or unsupported URL: $url');
-        NotificationService.showErrorSnackBar('الرابط غير صالح: $url');
-
-        // تحديث البيانات حتى لو كان الرابط غير صالح
-        if (reminderId != null) {
-          await _instance._scheduleMarkReminderAsReadTask(
-              reminderId, url, false);
-        }
+        NotificationService.showWarningSnackBar('⚠️ No URL provided in payload');
       }
-    } else {
-      NotificationService.showWarningSnackBar('⚠️ No URL provided in payload');
-    }
 
-    // التنقل إلى صفحة التذكير (يبقى كما هو)
-    if (reminderId != null) {
-      final Map<String, dynamic> arguments = {
-        'reminderId': reminderId,
-      };
-      navigatorKey.currentState?.pushNamed('/reminder', arguments: arguments);
-      NotificationService.showSuccessSnackBar(
-          '🔗 Navigated to reminder page with ID: $reminderId');
-    } else {
-      NotificationService.showErrorSnackBar(
-          '❌ Could not retrieve reminder ID from payload');
-      // إنشاء Reminder object كما هو موجود في الكود الأصلي
-      final Reminder reminder = Reminder(
-        id: receivedAction.id!,
-        userId: 0,
-        url: payload['url'] ?? '',
-        title: receivedAction.title ?? 'تذكير',
-        content: payload['content'] ?? '',
-        imageUrl: payload['imageUrl'] ?? '',
-        importance: payload['importance'] ?? '',
-        scheduledTimes: (payload['scheduledTimes'] as List<dynamic>?)
-                ?.map((e) => e.toString())
-                .toList() ??
-            [],
-        nextReminderTime: payload['nextReminderTime'] ?? '',
-        isOpened: 1,
-        createdAt: payload['createdAt'] ?? '',
-        updatedAt: payload['updatedAt'] ?? '',
-        category: payload['category'] ?? '',
-        complexity: payload['complexity'] ?? '',
-        domain: payload['domain'] ?? '',
-      );
-      navigatorKey.currentState?.pushNamed('/reminder', arguments: reminder);
+      // التنقل إلى صفحة التذكير (يبقى كما هو)
+      if (reminderId != null) {
+        final Map<String, dynamic> arguments = {
+          'reminderId': reminderId,
+        };
+        navigatorKey.currentState?.pushNamed('/reminder', arguments: arguments);
+        NotificationService.showSuccessSnackBar(
+            '🔗 Navigated to reminder page with ID: $reminderId');
+      } else {
+        NotificationService.showErrorSnackBar(
+            '❌ Could not retrieve reminder ID from payload');
+        // إنشاء Reminder object كما هو موجود في الكود الأصلي
+        final Reminder reminder = Reminder(
+          id: receivedAction.id!,
+          userId: 0,
+          url: payload['url'] ?? '',
+          title: receivedAction.title ?? 'تذكير',
+          content: payload['content'] ?? '',
+          imageUrl: payload['imageUrl'] ?? '',
+          importance: payload['importance'] ?? '',
+          scheduledTimes: (payload['scheduledTimes'] as List<dynamic>?)
+                  ?.map((e) => e.toString())
+                  .toList() ??
+              [],
+          nextReminderTime: payload['nextReminderTime'] ?? '',
+          isOpened: 1,
+          createdAt: payload['createdAt'] ?? '',
+          updatedAt: payload['updatedAt'] ?? '',
+          category: payload['category'] ?? '',
+          complexity: payload['complexity'] ?? '',
+          domain: payload['domain'] ?? '',
+        );
+        navigatorKey.currentState?.pushNamed('/reminder', arguments: reminder);
+      }
+    } catch (e) {
+      print('❌ Error in onNotificationActionReceived: $e');
     }
   }
 
@@ -1010,5 +1012,72 @@ class NotificationService {
     NotificationService.showSuccessSnackBar(
         '✅ Time is valid for scheduling reminder $reminderId');
     return true;
+  }
+  
+  // دالة جديدة لمعالجة رسائل FCM مع التركيز على data
+  static Future<void> handleFcmDataMessage(Map<String, dynamic> data) async {
+    try {
+      final title = data['title']?.toString().trim() ?? 'تذكير';
+      final body = data['body']?.toString().trim() ?? 'لديك تذكير جديد';
+      final reminderIdStr = data['reminderId']?.toString() ?? '';
+      final int? reminderId = reminderIdStr.isNotEmpty ? int.tryParse(reminderIdStr) : null;
+      final operation = data['operation']?.toString().trim() ?? '';
+      final url = data['url']?.toString() ?? '';
+      
+      print('📬 Handling FCM data message');
+      print('Title: $title');
+      print('Body: $body');
+      print('Reminder ID: $reminderId');
+      print('Operation: $operation');
+      print('URL: $url');
+      
+      // إذا كان هناك معرف تذكير، قم بمعالجته
+      if (reminderId != null && reminderId > 0) {
+        final remindersNotifier = RemindersNotifier.instance;
+        if (remindersNotifier != null) {
+          switch (operation.toLowerCase().trim()) {
+            case 'reschedule':
+              await remindersNotifier.handleRescheduleFromFcm(reminderId);
+              break;
+            case 'update':
+              await remindersNotifier.handleUpdateFromFcm(reminderId);
+              break;
+            case 'new':
+              await remindersNotifier.handleNewReminderFromFcm(reminderId);
+              break;
+            case 'markas_read':
+            case 'mark_as_read':
+              await remindersNotifier.handleMarkAsReadFromFcm(reminderId);
+              break;
+            case 'delete':
+              await remindersNotifier.deleteReminderComprehensive(reminderId);
+              break;
+            default:
+              print('⚠️ Unknown operation: $operation');
+          }
+        }
+      }
+      
+      // إنشاء إشعار محلي
+      await AwesomeNotifications().createNotification(
+        content: NotificationContent(
+          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+          channelKey: 'scheduled_channel',
+          title: title,
+          body: body,
+          category: NotificationCategory.Reminder,
+          notificationLayout: NotificationLayout.Default,
+          payload: {
+            'id': reminderId?.toString() ?? '',
+            'url': url,
+            'operation': operation,
+          },
+          criticalAlert: true,
+          locked: true,
+        ),
+      );
+    } catch (e) {
+      print('❌ Error handling FCM data message: $e');
+    }
   }
 }

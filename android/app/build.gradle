@@ -27,12 +27,12 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace "com.saadmohammed2000.flex_reminder"
-    compileSdk 36  // ✅ Updated from 35 to 36
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.saadmohammed2000.flex_reminder"
         minSdkVersion 24
-        targetSdkVersion 36  // ✅ Also updated to 36 (optional but recommended)
+        targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
@@ -78,6 +78,8 @@ dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:1.2.2'
 
+    // ✅ Firebase
     implementation platform("com.google.firebase:firebase-bom:33.16.0")
     implementation "com.google.firebase:firebase-analytics"
+    implementation "com.google.firebase:firebase-messaging-ktx"  // ⭐ هذا السطر الجديد
 }

@@ -6,30 +6,33 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../utils/consts.dart';
 import '../../globals.dart'; // navigatorKey
 import 'api_config.dart';
-import 'exceptions.dart'; // تم استيراد الاستثناء الجديد
-import '../authentication_service.dart'; // تأكد من المسار الصحيح
+import 'exceptions.dart';
+import '../authentication_service.dart';
 
 class UtilsService {
   final ApiConfig _apiConfig;
 
   UtilsService(this._apiConfig);
 
-  // طلب عام (GET/POST)
+  // Getter to access ApiConfig from other services
+  ApiConfig get apiConfig => _apiConfig;
+
+  // Generic request method (GET/POST)
   Future<Map<String, dynamic>> request(
     String method,
     String endpoint, {
     Map<String, dynamic>? data,
+    String contentType = 'application/json',
   }) async {
     if (!await _apiConfig.checkTokenValidity()) {
       await _handleInvalidToken();
-      throw Exception('الجلسة منتهية الصلاحية');
+      throw Exception('Session expired');
     }
 
     final uri = Uri.parse('${AppConstants.API_BASE_URL}/$endpoint');
     http.Response response;
 
     try {
-      // إضافة التوكن في الهيدر إذا كان متوفراً
       final headers = {
         'X-API-Password': AppConstants.API_PASSWORD,
       };
@@ -40,17 +43,19 @@ class UtilsService {
       }
 
       if (method == 'POST') {
-        headers['Content-Type'] = 'application/json';
+        headers['Content-Type'] = contentType;
         response = await http.post(
           uri,
           headers: headers,
-          body: jsonEncode(data),
+          body: contentType == 'application/x-www-form-urlencoded'
+              ? data
+              : jsonEncode(data),
         );
       } else {
         response = await http.get(uri, headers: headers);
       }
     } catch (e) {
-      throw Exception('فشل الاتصال بالخادم');
+      throw Exception('Failed to connect to server');
     }
 
     print('Request: $method $endpoint → ${response.statusCode}');
@@ -59,10 +64,8 @@ class UtilsService {
     if (responseData is Map<String, dynamic> &&
         responseData['success'] == false &&
         responseData['message'] == 'no_valid_subscription') {
-      // استدعاء طريقة تسجيل الخروج العامة
       await handleNoValidSubscription();
-      // إطلاق استثناء مخصص لمنع عرض رسالة الخطأ في الواجهة
-      throw NoValidSubscriptionException('لا يوجد اشتراك صالح');
+      throw NoValidSubscriptionException('No valid subscription');
     }
 
     return {
@@ -71,62 +74,33 @@ class UtilsService {
     };
   }
 
-  // معالجة توكن منتهي
+  // Handle expired token
   Future<void> _handleInvalidToken() async {
     await _performBasicCleanup();
     await _triggerFullLogout();
   }
 
-  // معالجة انتهاء الاشتراك (تم تغييرها إلى عامة)
+  // Handle subscription expiration
   Future<void> handleNoValidSubscription() async {
-    await _performBasicCleanup();
-    await _triggerFullLogout(
-      showMessage: true,
-      message: 'انتهى اشتراكك، يرجى التجديد للمتابعة',
-    );
-  }
-
-  // تسجيل الخروج الكامل (محاكاة لضغط زر تسجيل الخروج)
-  Future<void> _triggerFullLogout({
-    bool showMessage = false,
-    String? message,
-  }) async {
     try {
-      // استخدام navigatorKey.currentState للوصول إلى الـ context
       final navigator = navigatorKey.currentState;
 
       if (navigator != null && navigator.mounted) {
         final context = navigator.context;
 
-        // محاكاة ضغط زر تسجيل الخروج في UpperAppBar
-        try {
-          final authService = AuthenticationService(context);
-          await authService.logout();
-        } catch (e) {
-          print('Auth logout error: $e');
-          // في حالة فشل تسجيل الخروج من AuthenticationService،
-          // نقوم بالتنظيف والانتقال يدوياً
-          await _performBasicCleanup();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Your subscription has expired, please renew to continue'),
+            backgroundColor: Colors.orange.shade700,
+            duration: const Duration(seconds: 6),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
 
-          // عرض الرسالة إذا لزم الأمر
-          if (showMessage && navigator.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(message ?? 'تم تسجيل الخروج بنجاح'),
-                backgroundColor: Colors.orange.shade700,
-                duration: const Duration(seconds: 6),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-
-          // الانتقال إلى صفحة تسجيل الدخول
-          navigator.pushNamedAndRemoveUntil('/auth', (_) => false);
-        }
+        final authService = AuthenticationService(context);
+        await authService.logout();
       } else {
-        // fallback: إذا فشل كل شيء
-        print(
-            '⚠️ Navigator not available, forcing navigation via Navigator.of');
+        print('⚠️ Navigator not available, forcing navigation');
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (navigatorKey.currentState != null) {
             navigatorKey.currentState!
@@ -136,7 +110,6 @@ class UtilsService {
       }
     } catch (e) {
       print('Critical logout error: $e');
-      // آخر محاولة للانتقال
       try {
         navigatorKey.currentState
             ?.pushNamedAndRemoveUntil('/auth', (_) => false);
@@ -146,7 +119,58 @@ class UtilsService {
     }
   }
 
-  // تنظيف أساسي للبيانات المحلية
+  // Full logout (simulating logout button press)
+  Future<void> _triggerFullLogout({
+    bool showMessage = false,
+    String? message,
+  }) async {
+    try {
+      final navigator = navigatorKey.currentState;
+
+      if (navigator != null && navigator.mounted) {
+        final context = navigator.context;
+
+        try {
+          final authService = AuthenticationService(context);
+          await authService.logout();
+        } catch (e) {
+          print('Auth logout error: $e');
+          await _performBasicCleanup();
+
+          if (showMessage && navigator.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(message ?? 'Logged out successfully'),
+                backgroundColor: Colors.orange.shade700,
+                duration: const Duration(seconds: 6),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+
+          navigator.pushNamedAndRemoveUntil('/auth', (_) => false);
+        }
+      } else {
+        print('⚠️ Navigator not available, forcing navigation');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (navigatorKey.currentState != null) {
+            navigatorKey.currentState!
+                .pushNamedAndRemoveUntil('/auth', (_) => false);
+          }
+        });
+      }
+    } catch (e) {
+      print('Critical logout error: $e');
+      try {
+        navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/auth', (_) => false);
+      } catch (navError) {
+        print('Final navigation attempt failed: $navError');
+      }
+    }
+  }
+
+  // Basic cleanup of local data
   Future<void> _performBasicCleanup() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -159,7 +183,7 @@ class UtilsService {
     }
   }
 
-  // جلب وقت الخادم
+  // Get server time
   Future<DateTime> getServerTime() async {
     try {
       final response = await http.get(
@@ -190,59 +214,21 @@ class UtilsService {
     return lastTimeStr != null ? DateTime.parse(lastTimeStr) : DateTime.now();
   }
 
-  // جلب إعدادات API
+  // Get API configuration
   Future<Map<String, dynamic>> getApiConfig() async {
-    if (!await _apiConfig.checkTokenValidity()) {
-      await _handleInvalidToken();
-      throw Exception('الجلسة منتهية');
+    final responseMap = await request('GET', 'api-credentials');
+    if (responseMap['statusCode'] != 200) {
+      throw Exception('Failed to fetch settings');
     }
-
-    final token = await _apiConfig.getToken();
-    final response = await http.get(
-      Uri.parse('${AppConstants.API_BASE_URL}/api-credentials'),
-      headers: {
-        'X-API-Password': AppConstants.API_PASSWORD,
-        'Authorization': 'Bearer $token',
-      },
-    );
-
-    final data = jsonDecode(response.body);
-    if (data['success'] == false &&
-        data['message'] == 'no_valid_subscription') {
-      await handleNoValidSubscription(); // استخدام الطريقة العامة
-      throw NoValidSubscriptionException('لا يوجد اشتراك صالح');
-    }
-
-    return response.statusCode == 200
-        ? data
-        : throw Exception('فشل جلب الإعدادات');
+    return responseMap['data'];
   }
 
-  // جلب بيانات API
+  // Get API credentials
   Future<Map<String, dynamic>> getApiCredentials() async {
-    if (!await _apiConfig.checkTokenValidity()) {
-      await _handleInvalidToken();
-      throw Exception('الجلسة منتهية');
+    final responseMap = await request('GET', 'api-credentials');
+    if (responseMap['statusCode'] != 200) {
+      throw Exception('Failed to fetch data');
     }
-
-    final token = await _apiConfig.getToken();
-    final response = await http.get(
-      Uri.parse('${AppConstants.API_BASE_URL}/api-credentials'),
-      headers: {
-        'X-API-Password': AppConstants.API_PASSWORD,
-        'Authorization': 'Bearer $token',
-      },
-    );
-
-    final data = jsonDecode(response.body);
-    if (data['success'] == false &&
-        data['message'] == 'no_valid_subscription') {
-      await handleNoValidSubscription(); // استخدام الطريقة العامة
-      throw NoValidSubscriptionException('لا يوجد اشتراك صالح');
-    }
-
-    return response.statusCode == 200
-        ? data
-        : throw Exception('فشل جلب البيانات');
+    return responseMap['data'];
   }
 }

@@ -1,32 +1,80 @@
 package com.saadmohammed2000.flex_reminder
 
-import io.flutter.embedding.android.FlutterFragmentActivity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
-import io.flutter.plugin.common.MethodChannel
+import android.util.Log
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 import android.app.AlarmManager
 import android.app.PendingIntent
-import android.content.Context
 import android.os.Build
-import android.util.Log
 import android.provider.Settings
 
-class MainActivity: FlutterFragmentActivity() {
+class MainActivity : FlutterFragmentActivity() {
     
     private val SHARED_DATA_CHANNEL = "app.channel.shared.data"
     private val ALARM_CHANNEL = "com.saadmohammed2000.flex_reminder/alarm"
+    private val FCM_CHANNEL = "com.saadmohammed2000.flex_reminder/fcm"
+    private val DEEPLINK_CHANNEL = "com.saadmohammed2000.flex_reminder/deeplink"
     private var sharedText: String? = null
     
     companion object {
         private const val TAG = "MainActivity"
         const val ALARM_ACTION = "ALARM_ACTION"
     }
+    
+    // BroadcastReceiver for FCM messages
+    private val fcmReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "FCM_MESSAGE_RECEIVED") {
+                val action = intent.getStringExtra("action")
+                val data = mutableMapOf<String, String>() // إصلاح: استخدام data بدلاً من dataMap
+                
+                // استخراج البيانات من الـ intent
+                intent.extras?.keySet()?.forEach { key ->
+                    if (key != "action") {
+                        val value = intent.getStringExtra(key)
+                        if (value != null) {
+                            data[key] = value
+                        }
+                    }
+                }
+                
+                // إرسال إلى Flutter
+                flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
+                    val channel = MethodChannel(messenger, FCM_CHANNEL)
+                    channel.invokeMethod("onFcmMessageReceived", mapOf(
+                        "action" to action,
+                        "data" to data
+                    ))
+                }
+            }
+        }
+    }
+    
+    // BroadcastReceiver for FCM token refresh
+    private val tokenRefreshReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "FCM_TOKEN_REFRESH") {
+                val token = intent.getStringExtra("token")
+                
+                // إرسال إلى Flutter
+                flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
+                    val channel = MethodChannel(messenger, FCM_CHANNEL)
+                    channel.invokeMethod("onTokenRefresh", token)
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "🚀 ========== APP STARTED ==========")
-        Log.d(TAG, "📱 App Package: ${packageName}")
+        Log.d(TAG, "📱 App Package: $packageName")
         Log.d(TAG, "📦 Android Version: ${Build.VERSION.SDK_INT}")
         
         // معالجة البيانات المشتركة
@@ -34,17 +82,9 @@ class MainActivity: FlutterFragmentActivity() {
             sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
             Log.d(TAG, "📝 Shared text stored: $sharedText")
         }
-        // داخل onCreate و onNewIntent (نفس الكود في المكانين)
-if (intent.hasExtra("open_reminder_detail") && intent.getBooleanExtra("open_reminder_detail", false)) {
-    val reminderId = intent.getIntExtra("reminder_id", -1)
-    Log.d(TAG, "🎯 Deep link: Opening ReminderDetailScreen for ID: $reminderId")
-
-    // إرسال event إلى Flutter
-    flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
-        val channel = MethodChannel(messenger, "com.saadmohammed2000.flex_reminder/deeplink")
-        channel.invokeMethod("openReminderDetail", reminderId)
-    }
-}
+        
+        // معالجة Deep Link
+        handleDeepLink(intent)
         
         // التحقق من الأذونات الضرورية
         checkExactAlarmPermission()
@@ -173,6 +213,48 @@ if (intent.hasExtra("open_reminder_detail") && intent.getBooleanExtra("open_remi
                 
                 else -> {
                     Log.w(TAG, "⚠️ Unknown method: ${call.method}")
+                    result.notImplemented()
+                }
+            }
+        }
+        
+        // ==================== قناة FCM ====================
+        val fcmChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            FCM_CHANNEL
+        )
+        
+        fcmChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getFCMToken" -> {
+                    try {
+                        val prefs = getSharedPreferences("fcm_prefs", Context.MODE_PRIVATE)
+                        val token = prefs.getString("fcm_token", null)
+                        result.success(token)
+                    } catch (e: Exception) {
+                        result.error("ERROR", e.message, null)
+                    }
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+        
+        // ==================== قناة Deep Link ====================
+        val deeplinkChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            DEEPLINK_CHANNEL
+        )
+        
+        deeplinkChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "openReminderDetail" -> {
+                    val reminderId = call.arguments
+                    Log.d(TAG, "🎯 Deep link: Opening ReminderDetailScreen for ID: $reminderId")
+                    result.success(null)
+                }
+                else -> {
                     result.notImplemented()
                 }
             }
@@ -407,6 +489,27 @@ if (intent.hasExtra("open_reminder_detail") && intent.getBooleanExtra("open_remi
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        Log.d(TAG, "▶️ App resumed")
+        
+        // إعادة التحقق من الأذونات
+        checkExactAlarmPermission()
+        
+        // تسجيل الـ receivers
+        registerReceiver(fcmReceiver, IntentFilter("FCM_MESSAGE_RECEIVED"))
+        registerReceiver(tokenRefreshReceiver, IntentFilter("FCM_TOKEN_REFRESH"))
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Log.d(TAG, "⏸️ App paused")
+        
+        // إلغاء تسجيل الـ receivers
+        unregisterReceiver(fcmReceiver)
+        unregisterReceiver(tokenRefreshReceiver)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         Log.d(TAG, "🔄 ========== ON NEW INTENT ==========")
@@ -423,36 +526,32 @@ if (intent.hasExtra("open_reminder_detail") && intent.getBooleanExtra("open_remi
                 }
             }
         }
-         // داخل onCreate و onNewIntent (نفس الكود في المكانين)
-if (intent.hasExtra("open_reminder_detail") && intent.getBooleanExtra("open_reminder_detail", false)) {
-    val reminderId = intent.getIntExtra("reminder_id", -1)
-    Log.d(TAG, "🎯 Deep link: Opening ReminderDetailScreen for ID: $reminderId")
-
-    // إرسال event إلى Flutter
-    flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
-        val channel = MethodChannel(messenger, "com.saadmohammed2000.flex_reminder/deeplink")
-        channel.invokeMethod("openReminderDetail", reminderId)
-    }
-}
+        
+        // معالجة Deep Link
+        handleDeepLink(intent)
+        
         // معالجة الإشعارات
         val fromNotification = intent.getBooleanExtra("from_notification", false)
         if (fromNotification) {
-            val reminderId = intent.getIntExtra(AlarmReceiver.EXTRA_REMINDER_ID, -1)
-            val url = intent.getStringExtra(AlarmReceiver.EXTRA_URL)
+            val reminderId = intent.getIntExtra("reminder_id", -1)
+            val url = intent.getStringExtra("post_url")
             Log.d(TAG, "📬 Opened from notification - Reminder ID: $reminderId, URL: $url")
         }
     }
+    
+    // ✅ دالة جديدة موحدة
+    private fun handleDeepLink(intent: Intent?) {
+        if (intent?.hasExtra("open_reminder_detail") == true && 
+            intent.getBooleanExtra("open_reminder_detail", false)) {
+            
+            val reminderId = intent.getIntExtra("reminder_id", -1)
+            Log.d(TAG, "🎯 Deep link: Opening ReminderDetailScreen for ID: $reminderId")
 
-    override fun onResume() {
-        super.onResume()
-        Log.d(TAG, "▶️ App resumed")
-        
-        // إعادة التحقق من الأذونات
-        checkExactAlarmPermission()
-    }
-
-    override fun onDestroy() {
-        Log.d(TAG, "💀 App destroyed")
-        super.onDestroy()
+            // إرسال event إلى Flutter
+            flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
+                val channel = MethodChannel(messenger, DEEPLINK_CHANNEL)
+                channel.invokeMethod("openReminderDetail", reminderId)
+            }
+        }
     }
 }

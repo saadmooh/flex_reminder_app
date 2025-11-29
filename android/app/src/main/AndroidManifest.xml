@@ -32,10 +32,10 @@
             android:name="com.saadmohammed2000.flex_reminder.AlarmReceiver"
             android:directBootAware="true"
             android:enabled="true"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                <action android:name="android.intent.action.NOTIFY" />
-        <action android:name="ALARM_ACTION" />
+               <action android:name="ALARM_ACTION" />
             </intent-filter>
         </receiver>
 
@@ -47,19 +47,9 @@
         <!-- ==================== Firebase Cloud Messaging Services ==================== -->
         
         <service
-            android:name="io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingService"
-            android:directBootAware="true"
-            android:exported="false"
-            android:stopWithTask="false">
-            <intent-filter android:priority="1000">
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
-
-        <service
             android:name="com.saadmohammed2000.flex_reminder.MyFirebaseMessagingService"
             android:directBootAware="true"
-            android:exported="false"
+            android:exported="true"
             android:stopWithTask="false">
             <intent-filter android:priority="1000">
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
@@ -74,22 +64,11 @@
             android:foregroundServiceType="dataSync" />
             
         <!-- ==================== FCM Receivers ==================== -->
-        
-        <receiver
-            android:name="io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingReceiver"
-            android:directBootAware="true"
-            android:exported="true"
-            android:permission="com.google.android.c2dm.permission.SEND"
-            tools:replace="android:exported">
-            <intent-filter android:priority="1000">
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </receiver>
 
         <receiver
             android:name="com.saadmohammed2000.flex_reminder.MyFCMReceiver"
             android:directBootAware="true"
-            android:exported="false"
+            android:exported="true"
             android:permission="com.google.android.c2dm.permission.SEND">
             <intent-filter android:priority="1000">
                 <action android:name="com.google.android.c2dm.intent.RECEIVE" />
@@ -229,7 +208,6 @@
             <action android:name="android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
         </intent>
 
-        <!-- للوصول إلى إعدادات الإنذارات الدقيقة -->
         <intent>
             <action android:name="android.settings.REQUEST_SCHEDULE_EXACT_ALARM" />
         </intent>

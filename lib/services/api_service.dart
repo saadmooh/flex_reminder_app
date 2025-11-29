@@ -10,7 +10,7 @@ import 'api_functions/reminder_service.dart';
 import 'api_functions/user_service.dart';
 import 'api_functions/stats_service.dart';
 import 'api_functions/utils_service.dart';
-import 'api_functions/exceptions.dart'; // أضف هذا
+import 'api_functions/exceptions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
@@ -23,12 +23,12 @@ class ApiService {
   final UtilsService _utilsService;
 
   ApiService()
-      : _authService = AuthService(ApiConfig()),
-        _subscriptionService = SubscriptionService(ApiConfig()),
-        _reminderService = ReminderService(ApiConfig()),
-        _userService = UserService(ApiConfig()),
-        _statsService = StatsService(ApiConfig()),
-        _utilsService = UtilsService(ApiConfig());
+      : _utilsService = UtilsService(ApiConfig()),
+        _authService = AuthService(ApiConfig()),
+        _subscriptionService = SubscriptionService(UtilsService(ApiConfig())),
+        _reminderService = ReminderService(UtilsService(ApiConfig())),
+        _userService = UserService(UtilsService(ApiConfig())),
+        _statsService = StatsService(UtilsService(ApiConfig()));
 
   // دالة مساعدة لتغليف الطلبات وحمايتها من انتهاء الاشتراك
   Future<T> _safeRequest<T>(Future<T> Function() apiCall) async {

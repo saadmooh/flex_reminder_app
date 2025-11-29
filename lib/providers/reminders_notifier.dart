@@ -713,12 +713,12 @@ class RemindersNotifier extends ChangeNotifier {
   }
 
   void _showSnackBar(String message, Color backgroundColor) {
-    // if (navigatorKey?.currentContext != null) {
-    //   final scaffoldMessenger =
-    //       ScaffoldMessenger.of(navigatorKey!.currentContext!);
-    // } else {
-    //   print('App not active, ignoring SnackBar: $message');
-    // }
+    if (navigatorKey?.currentContext != null) {
+      final scaffoldMessenger =
+          ScaffoldMessenger.of(navigatorKey!.currentContext!);
+    } else {
+      print('App not active, ignoring SnackBar: $message');
+    }
   }
 
   void _safeShowMessage(String message, {Color? color}) {
@@ -1744,48 +1744,87 @@ class RemindersNotifier extends ChangeNotifier {
     }
   }
 
-  Future<void> handleFcmMessage(RemoteMessage message) async {
-    try {
-      print('Processing FCM message: ${message.messageId}');
-      final String title =
-          message.data['title'] ?? message.notification?.title ?? '';
-      final String body =
-          message.data['body'] ?? message.notification?.body ?? '';
-
-      if (title.isEmpty || body.isEmpty) {
-        print('Incomplete message data');
-        return;
-      }
-
-      int? reminderId;
-      try {
-        reminderId = int.parse(body);
-      } catch (e) {
-        print('Error parsing body to number: $e');
-        return;
-      }
-
-      print('Processing FCM for reminder $reminderId - operation type: $title');
-      switch (title.toLowerCase()) {
-        case 'update':
-          await handleUpdateFromFcm(reminderId);
-          break;
-        case 'reschedule':
-          await handleRescheduleFromFcm(reminderId);
-          break;
-        case 'new':
-          await handleNewReminderFromFcm(reminderId);
-          break;
-        case 'markas_read':
-          await handleMarkAsReadFromFcm(reminderId);
-          break;
-        default:
-          print('Unsupported operation type: $title');
-      }
-    } catch (e) {
-      print('Error processing FCM message: $e');
+ /// معالجة رسائل FCM القادمة من FcmService
+Future<void> handleFcmMessage(Map<String, dynamic> data) async {
+  try {
+    print('Processing FCM message with data: $data');
+    
+    // استخراج البيانات من الرسالة
+    final String action = data['action']?.toString().trim() ?? '';
+    final String postId = data['post_id']?.toString() ?? '';
+    final String postTitle = data['post_title']?.toString() ?? '';
+    final String nextReminderTime = data['next_reminder_time']?.toString() ?? '';
+    
+    if (action.isEmpty || postId.isEmpty) {
+      print('Incomplete message data: action=$action, postId=$postId');
+      return;
     }
+    
+    int? reminderId;
+    try {
+      reminderId = int.parse(postId);
+    } catch (e) {
+      print('Error parsing post_id to number: $e');
+      return;
+    }
+    
+    print('Processing FCM for reminder $reminderId - operation type: $action');
+    
+    // التحقق مما إذا كان التذكير موجودًا محليًا
+    bool existsLocally = _readReminders.any((r) => r.id == reminderId) ||
+                         _unreadReminders.any((r) => r.id == reminderId);
+    
+    switch (action.toLowerCase().trim()) {
+      case 'reminder_updated':
+      case 'update':
+        if (existsLocally) {
+          await handleUpdateFromFcm(reminderId);
+        } else {
+          await handleNewReminderFromFcm(reminderId);
+        }
+        break;
+      case 'reschedule':
+        if (existsLocally) {
+          await handleRescheduleFromFcm(reminderId);
+        } else {
+          await handleNewReminderFromFcm(reminderId);
+        }
+        break;
+      case 'new':
+        await handleNewReminderFromFcm(reminderId);
+        break;
+      case 'markas_read':
+      case 'mark_as_read':
+        if (existsLocally) {
+          await handleMarkAsReadFromFcm(reminderId);
+        } else {
+          // إذا لم يكن التذكير موجودًا محليًا، حاول جلبه من الخادم
+          try {
+            final reminder = await _apiService.getReminderById(reminderId);
+            if (reminder.id == reminderId && reminder.isOpened == 1) {
+              _readReminders.add(reminder);
+              _readReminders.sort((a, b) => b.id.compareTo(a.id));
+              await _updateCachedReminderFixed(reminder);
+              notifyListeners();
+              print('Added read reminder $reminderId from server');
+            }
+          } catch (e) {
+            print('Error fetching reminder from server: $e');
+          }
+        }
+        break;
+      case 'delete':
+        if (existsLocally) {
+          await deleteReminderComprehensive(reminderId);
+        }
+        break;
+      default:
+        print('Unsupported operation type: $action');
+    }
+  } catch (e) {
+    print('Error processing FCM message: $e');
   }
+}
 
   Future<void> handleRescheduleFromFcm(int reminderId) async {
     try {

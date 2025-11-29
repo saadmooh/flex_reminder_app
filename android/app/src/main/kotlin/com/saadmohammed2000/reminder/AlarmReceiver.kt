@@ -12,6 +12,7 @@ import android.app.PendingIntent
 import android.media.RingtoneManager
 import android.os.PowerManager
 import android.media.AudioAttributes
+import org.json.JSONObject
 
 class AlarmReceiver : BroadcastReceiver() {
     
@@ -23,6 +24,7 @@ class AlarmReceiver : BroadcastReceiver() {
         const val EXTRA_URL = "url"
         const val EXTRA_IMPORTANCE = "importance"
         const val CHANNEL_ID = "scheduled_channel"
+        const val ALARM_ACTION = "ALARM_ACTION" // إضافة هذا الثابت
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -31,7 +33,7 @@ class AlarmReceiver : BroadcastReceiver() {
         Log.d(TAG, "📦 Package: ${context.packageName}")
         
         // التأكد من أن هذا هو intent صحيح
-        if (intent.action != MainActivity.ALARM_ACTION && 
+        if (intent.action != ALARM_ACTION && 
             intent.action != "android.intent.action.NOTIFY") {
             Log.w(TAG, "⚠️ Unknown action: ${intent.action}")
             return

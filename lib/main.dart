@@ -1,3 +1,4 @@
+import 'package:flex_reminder/globals.dart'; // للوصول إلى navigatorKey
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -36,71 +37,104 @@ bool _isFcmInitialized = false;
 bool _isRevenueCatInitialized = false;
 String? _initializationError;
 
+
 // إنشاء instance مشترك للـ NotificationService
 late NotificationService _backgroundNotificationService;
 late FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin;
 
 void main() async {
+  // ✅ 1. تهيئة Flutter Binding
   WidgetsFlutterBinding.ensureInitialized();
+  
+  print('🚀 ========== بدء تشغيل التطبيق ==========');
 
-  // فحص الإنترنت أولاً
-  final hasInternet =
-      await ConnectivityHelper.checkInternetConnection(verbose: true);
-
+  // ✅ 2. فحص الاتصال بالإنترنت
+  print('📡 فحص الاتصال بالإنترنت...');
+  final hasInternet = await ConnectivityHelper.checkInternetConnection(verbose: true);
   if (!hasInternet) {
-    // تشغيل التطبيق مع شاشة عدم وجود إنترنت
+    print('❌ لا يوجد اتصال بالإنترنت - تشغيل شاشة عدم الاتصال');
     runApp(const NoInternetApp());
     return;
   }
+  print('✅ الاتصال بالإنترنت متوفر');
 
-  // باقي الكود للحالة العادية...
-  await _initializeFirebaseSafely();
+  // ✅ 3. استخدام دالة التهيئة الموحدة
+  await _initializeAndStartApp();
+}
 
-  // تهيئة WorkManager أولاً (لا يتطلب إنترنت)
+// دالة التهيئة الموحدة
+Future<void> _initializeAndStartApp() async {
   try {
-    await Workmanager().initialize(
-      callbackDispatcher,
-      isInDebugMode: true,
-    );
-    _safeShowMessage('✅ تم تهيئة WorkManager', color: Colors.green);
-  } catch (e) {
-    _safeShowMessage('⚠️ خطأ في تهيئة WorkManager: $e', color: Colors.orange);
+    // تهيئة Firebase
+     final firebaseInitialized = await _initializeFirebaseSafely();
+  if (firebaseInitialized) {
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    await _initializeFcmSafely();
+   // _setupMessageHandlers();
   }
 
-  // تهيئة خدمة الإشعارات (لا تتطلب إنترنت)
-  try {
-    final notificationService = NotificationService();
-    await notificationService.init();
-    _safeShowMessage('✅ تم تهيئة خدمة الإشعارات', color: Colors.green);
-  } catch (e) {
-    _safeShowMessage('⚠️ خطأ في تهيئة خدمة الإشعارات: $e',
-        color: Colors.orange);
-  }
+    // تهيئة باقي الخدمات
+    try {
+      await Workmanager().initialize(
+        callbackDispatcher,
+        isInDebugMode: true,
+      );
+    } catch (e) {
+      _safeShowMessage('خطأ في تهيئة WorkManager: $e', color: Colors.red);
+    }
 
-  // محاولة تهيئة FCM (فقط إذا تم تهيئة Firebase)
-  await _initializeFcmSafely();
-  _setupMessageHandlers();
+    try {
+      final notificationService = NotificationService();
+      await notificationService.init();
+    } catch (e) {
+      _safeShowMessage('خطأ في تهيئة خدمة الإشعارات: $e', color: Colors.red);
+    }
 
-  // تشغيل التطبيق العادي
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => LanguageManager()),
-        ChangeNotifierProvider(create: (_) => AuthProvider.instance),
-        ChangeNotifierProvider.value(
-          value: RemindersNotifier.instance..navigatorKey = navigatorKey,
+   
+
+    // تشغيل التطبيق
+    print('🎯 تشغيل التطبيق...');
+    print('=' * 60);
+    
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => LanguageManager()),
+          ChangeNotifierProvider(create: (_) => AuthProvider.instance),
+          ChangeNotifierProvider.value(
+            value: RemindersNotifier.instance..navigatorKey = navigatorKey,
+          ),
+        ],
+        child: MyApp(
+          isFirebaseInitialized: _isFirebaseInitialized,
+          isFcmInitialized: _isFcmInitialized,
+          isRevenueCatInitialized: _isRevenueCatInitialized,
+          initializationError: _initializationError,
         ),
-      ],
-      child: MyApp(
-        isFirebaseInitialized: _isFirebaseInitialized,
-        isFcmInitialized: _isFcmInitialized,
-        isRevenueCatInitialized: _isRevenueCatInitialized,
-        initializationError: _initializationError,
       ),
-    ),
-  );
-
-  _safeShowMessage('✅ تم إطلاق التطبيق بنجاح', color: Colors.green);
+    );
+  } catch (e) {
+    _safeShowMessage('خطأ في تهيئة التطبيق: $e', color: Colors.red);
+    
+    // في حالة الخطأ، قم بتشغيل التطبيق مع عرض الخطأ
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => LanguageManager()),
+          ChangeNotifierProvider(create: (_) => AuthProvider.instance),
+          ChangeNotifierProvider.value(
+            value: RemindersNotifier.instance..navigatorKey = navigatorKey,
+          ),
+        ],
+        child: MyApp(
+          isFirebaseInitialized: _isFirebaseInitialized,
+          isFcmInitialized: _isFcmInitialized,
+          isRevenueCatInitialized: _isRevenueCatInitialized,
+          initializationError: _initializationError ?? e.toString(),
+        ),
+      ),
+    );
+  }
 }
 
 // تطبيق منفصل لحالة عدم وجود إنترنت
@@ -148,64 +182,8 @@ class _NoInternetScreenState extends State<NoInternetScreen> {
     });
 
     if (hasInternet) {
-      // إعادة تشغيل التطبيق بالكود الأصلي
+      // إعادة تشغيل التطبيق باستخدام دالة التهيئة الموحدة
       await _initializeAndStartApp();
-    }
-  }
-
-  Future<void> _initializeAndStartApp() async {
-    try {
-      // تهيئة Firebase
-      await _initializeFirebaseSafely();
-
-      // تهيئة باقي الخدمات
-      try {
-        await Workmanager().initialize(
-          callbackDispatcher,
-          isInDebugMode: true,
-        );
-      } catch (e) {
-        debugPrint('خطأ في تهيئة WorkManager: $e');
-      }
-
-      try {
-        final notificationService = NotificationService();
-        await notificationService.init();
-      } catch (e) {
-        debugPrint('خطأ في تهيئة خدمة الإشعارات: $e');
-      }
-
-      await _initializeFcmSafely();
-      _setupMessageHandlers();
-
-      // استبدال التطبيق الحالي بالتطبيق الرئيسي
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) => MultiProvider(
-              providers: [
-                ChangeNotifierProvider(create: (_) => LanguageManager()),
-                ChangeNotifierProvider(create: (_) => AuthProvider.instance),
-                ChangeNotifierProvider.value(
-                  value: RemindersNotifier.instance
-                    ..navigatorKey = navigatorKey,
-                ),
-              ],
-              child: MyApp(
-                isFirebaseInitialized: _isFirebaseInitialized,
-                isFcmInitialized: _isFcmInitialized,
-                isRevenueCatInitialized: _isRevenueCatInitialized,
-                initializationError: _initializationError,
-              ),
-            ),
-          ),
-          (route) => false,
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        debugPrint('خطأ في تهيئة التطبيق: $e');
-      }
     }
   }
 
@@ -298,80 +276,181 @@ class _NoInternetScreenState extends State<NoInternetScreen> {
   }
 }
 
-// دالة عرض الرسائل الآمنة (مع دعم Snackbar)
+// ============================================================================
+// دوال مساعدة للرسائل والإشعارات
+// ============================================================================
+
+// ✅ دالة محسّنة لعرض الرسائل
 void _safeShowMessage(String message, {Color? color, bool debugOnly = false}) {
-  // طباعة في الـ debug console إذا كان مطلوباً
+  // 1. طباعة في الـ debug console دائماً
   if (kDebugMode) {
     debugPrint('Main Debug: $message');
   }
 
-  // عرض Snackbar باستخدام الـ GlobalKey (فقط إذا لم يكن debugOnly فقط)
-  if (!debugOnly && scaffoldMessengerKey.currentState != null) {
-    scaffoldMessengerKey.currentState?.showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: const TextStyle(color: Colors.white),
-        ),
-        backgroundColor: color ?? Colors.blue, // لون افتراضي، يمكن تغييره
-        duration: const Duration(seconds: 3), // مدة العرض
-        behavior: SnackBarBehavior.floating, // لجعله يطفو
-        margin: const EdgeInsets.all(16), // هامش للشاشة
-      ),
-    );
+  // 2. عرض SnackBar (إذا لم يكن debugOnly فقط)
+  if (!debugOnly) {
+    // ✅ استخدام PostFrameCallback للتأكد من جاهزية الـ UI
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        // ✅ التحقق من وجود ScaffoldMessenger
+        final currentState = scaffoldMessengerKey.currentState;
+        if (currentState != null && currentState.mounted) {
+          currentState.showSnackBar(
+            SnackBar(
+              content: Text(
+                message,
+                style: const TextStyle(color: Colors.white),
+              ),
+              backgroundColor: color ?? Colors.blue,
+              duration: const Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(16),
+            ),
+          );
+        }
+      } catch (e) {
+        // في حالة فشل عرض SnackBar، فقط اطبع الخطأ
+        debugPrint('⚠️ Failed to show SnackBar: $e');
+      }
+    });
   }
 }
 
-// دالة لعرض SnackBar دائمًا عند وصول إشعار FCM
-void _showFcmNotificationSnackBar(String title, String body) {
-  String message = title.isNotEmpty ? '$title: $body' : body;
-  _safeShowMessage('🔔 وصل إشعار: $message', color: Colors.blue);
+// ✅ دالة بديلة للرسائل الفورية (للاستخدام داخل build methods)
+void _showImmediateMessage(String message, {Color? color}) {
+  try {
+    final currentState = scaffoldMessengerKey.currentState;
+    if (currentState != null && currentState.mounted) {
+      currentState.showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: color ?? Colors.blue,
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  } catch (e) {
+    debugPrint('⚠️ Failed to show immediate message: $e');
+  }
 }
 
-// معالج الرسائل في الخلفية
+// void _setupMessageHandlers() {
+//   if (!_isFirebaseInitialized) {
+//     _safeShowMessage('⚠️ Skipping message handlers - Firebase not initialized', color: Colors.orange);
+//     return;
+//   }
+  
+//     final fcmService = FcmService();
+//   try {
+//     // معالج المقدمة
+//     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+//       _safeShowMessage('📨 FOREGROUND MESSAGE RECEIVED', color: Colors.blue);
+      
+//       try {
+//         // استخراج البيانات
+//         final data = Map<String, dynamic>.from(message.data);
+//         final postTitle = data['post_title']?.toString().trim() ?? '';
+//         final nextReminderTime = data['next_reminder_time']?.toString() ?? '';
+        
+//         final title = postTitle.isNotEmpty ? postTitle : 'تذكير';
+//         final body = "موعد التذكير التالي: $nextReminderTime";
+        
+//         // ✅ عرض SnackBar أولاً
+//         if (title.isNotEmpty || body.isNotEmpty) {
+//           _showFcmNotificationSnackBar(title, body);
+//         }
+
+//         // ✅ استخدام instance method بدلاً من static
+       
+//         await fcmService.processMessage(message, isBackground: false);
+        
+//         _safeShowMessage('✅ Message processed successfully', color: Colors.green);
+        
+//       } catch (e, stackTrace) {
+//         _safeShowMessage('❌ Error processing message: $e', color: Colors.red);
+//         print('Error: $e\nStack: $stackTrace');
+//       }
+//     }, onError: (error) {
+//       _safeShowMessage('❌ Stream error: $error', color: Colors.red);
+//     });
+
+//     // معالج فتح التطبيق من إشعار
+//     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+//       _safeShowMessage('📱 App opened from notification', color: Colors.blue);
+      
+//       try {
+//         _handleMessageOpenedApp(message);
+//       } catch (e) {
+//         _safeShowMessage('❌ Error handling opened app: $e', color: Colors.red);
+//       }
+//     });
+
+//     // معالج الرسالة الأولية
+//     FirebaseMessaging.instance.getInitialMessage().then((initialMessage) {
+//       if (initialMessage != null) {
+//         _safeShowMessage('📬 Initial message', color: Colors.blue);
+        
+//         Future.delayed(const Duration(seconds: 2), () {
+//           try {
+//             _handleMessageOpenedApp(initialMessage);
+//           } catch (e) {
+//             _safeShowMessage('❌ Error handling initial message: $e', color: Colors.red);
+//           }
+//         });
+//       }
+//     });
+
+//     _safeShowMessage('✅ Message handlers configured', color: Colors.green);
+    
+//   } catch (e, stackTrace) {
+//     _safeShowMessage('❌ Setup error: $e', color: Colors.red);
+//     print('Error: $e\nStack: $stackTrace');
+//   }
+// }
+
+// ✅ تحديث معالج الخلفية أيضاً
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  print('📨 BACKGROUND MESSAGE RECEIVED');
+  
   try {
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
     }
+
     await _initializeBackgroundServices();
-    final String title =
-        message.notification?.title ?? message.data['title'] ?? 'تذكير جديد';
-    final String body = message.notification?.body ??
-        message.data['body'] ??
-        'لديك تذكير في انتظارك';
-    try {
-      await FcmService.processMessage(message, isBackground: true);
-    } catch (processingError) {
-      _safeShowMessage('❌ خطأ في معالجة FCM: $processingError',
-          color: Colors.red);
-      await _scheduleFailbackNotification(title, body, message.data);
-    }
-    _safeShowMessage('✅ تم معالجة الرسالة في الخلفية بنجاح',
-        color: Colors.green);
-  } catch (e) {
-    _safeShowMessage('❌ خطأ عام في معالجة الرسالة في الخلفية: $e',
-        color: Colors.red);
-    await _scheduleFailbackNotification(
-        "_scheduleEmergencyNotification", "body", message.data);
+
+    // ✅ استخدام instance method
+    final fcmService = FcmService.instance;
+    await fcmService.processMessage(message, isBackground: true);
+    
+    print('✅ Background message handled');
+    
+  } catch (e, stackTrace) {
+    print('❌ Background handler error: $e');
+    print('Stack: $stackTrace');
   }
 }
+
+// ============================================================================
+// دوال التهيئة
+// ============================================================================
 
 // تهيئة Firebase بشكل آمن
 Future<bool> _initializeFirebaseSafely() async {
   try {
-    _safeShowMessage('🔄 فحص الاتصال بالإنترنت...', debugOnly: true);
-    final hasInternet =
-        await ConnectivityHelper.checkInternetConnection(verbose: true);
-    if (!hasInternet) {
-      _safeShowMessage('⚠️ لا يوجد اتصال بالإنترنت - تخطي تهيئة Firebase',
-          color: Colors.orange);
-      _initializationError = 'لا يوجد اتصال بالإنترنت';
-      return false;
-    }
+    // _safeShowMessage('🔄 فحص الاتصال بالإنترنت...', debugOnly: true);
+    // final hasInternet =
+    //     await ConnectivityHelper.checkInternetConnection(verbose: true);
+    // if (!hasInternet) {
+    //   _safeShowMessage('⚠️ لا يوجد اتصال بالإنترنت - تخطي تهيئة Firebase',
+    //       color: Colors.orange);
+    //   _initializationError = 'لا يوجد اتصال بالإنترنت';
+    //   return false;
+    // }
     _safeShowMessage('🚀 بدء تهيئة Firebase...', debugOnly: true);
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -392,105 +471,62 @@ Future<bool> _initializeFirebaseSafely() async {
   }
 }
 
-// تهيئة FCM بشكل آمن
+// ✅ تحسين _initializeFcmSafely
 Future<bool> _initializeFcmSafely() async {
   try {
     if (!_isFirebaseInitialized) {
-      _safeShowMessage('⚠️ Firebase غير مهيئ - تخطي تهيئة FCM',
-          color: Colors.orange);
+      _safeShowMessage('⚠️ Firebase not initialized, skipping FCM', color: Colors.orange);
       return false;
     }
-    _safeShowMessage('🔄 بدء تهيئة FCM...', debugOnly: true);
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    _safeShowMessage('✅ تم تسجيل معالج الرسائل في الخلفية',
-        color: Colors.green);
+
+    _safeShowMessage('🔄 Initializing FCM...', color: Colors.blue);
+
+    // طلب الأذونات
+    try {
+      NotificationSettings settings = await FirebaseMessaging.instance.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
+      );
+      
+      _safeShowMessage('🔔 Permission status: ${settings.authorizationStatus}', color: Colors.blue);
+      
+      // الحصول على FCM Token
+      final fcmToken = await FirebaseMessaging.instance.getToken();
+      if (fcmToken != null) {
+        _safeShowMessage('📱 FCM Token: $fcmToken', color: Colors.blue);
+      }
+    } catch (e) {
+      _safeShowMessage('⚠️ Permission/Token error: $e', color: Colors.orange);
+    }
+
+    // تهيئة FCM Service
     final fcmService = FcmService();
     final fcmResult = await fcmService.init().timeout(
-      const Duration(seconds: 8),
-      onTimeout: () {
-        return {'success': false, 'message': 'انتهت مهلة تهيئة FCM'};
+      const Duration(seconds: 10),
+      onTimeout: () => {
+        'success': false,
+        'message': 'FCM initialization timeout'
       },
     );
-    _safeShowMessage('✅ تم تهيئة FCM Service: ${fcmResult['message']}',
-        color: Colors.green);
-    _isFcmInitialized = fcmResult['success'] ?? false;
+
+    _isFcmInitialized = fcmResult['permissionsGranted'] ?? false;
+    _safeShowMessage('✅ FCM initialized: $_isFcmInitialized', color: Colors.green);
+    
     return _isFcmInitialized;
-  } catch (e) {
-    _safeShowMessage('❌ خطأ في تهيئة FCM: $e', color: Colors.red);
+    
+  } catch (e, stackTrace) {
+    _safeShowMessage('❌ FCM initialization error: $e', color: Colors.red);
+    _safeShowMessage('Stack trace: $stackTrace', color: Colors.red);
     _isFcmInitialized = false;
     return false;
   }
 }
 
-// إعداد معالجات الرسائل
-void _setupMessageHandlers() {
-  if (!_isFirebaseInitialized) {
-    _safeShowMessage('⚠️ تخطي إعداد معالجات الرسائل - Firebase غير مهيئ',
-        color: Colors.orange);
-    return;
-  }
-  try {
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-      _safeShowMessage('📨 وصلت رسالة والتطبيق في المقدمة', debugOnly: true);
-
-      // عرض SnackBar دائمًا عند وصول إشعار في المقدمة
-      final String title =
-          message.data['title'] ?? message.notification?.title ?? '';
-      final String body =
-          message.data['body'] ?? message.notification?.body ?? '';
-      _showFcmNotificationSnackBar(title, body);
-
-      try {
-        await FcmService.processMessage(message, isBackground: false);
-        final notificationService = NotificationService();
-        await _scheduleForegroundNotification(message, notificationService);
-      } catch (e) {
-        _safeShowMessage('❌ خطأ في معالجة رسالة المقدمة: $e',
-            color: Colors.red);
-      }
-    });
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      _safeShowMessage('📱 تم فتح التطبيق من إشعار في الخلفية',
-          debugOnly: true);
-      _safeShowMessage('Message  ${message.data}', debugOnly: true);
-
-      // عرض SnackBar عند فتح التطبيق من الإشعار
-      final String title =
-          message.data['title'] ?? message.notification?.title ?? '';
-      final String body =
-          message.data['body'] ?? message.notification?.body ?? '';
-      _showFcmNotificationSnackBar(title, body);
-
-      _handleMessageOpenedApp(message);
-    });
-    FirebaseMessaging.instance.getInitialMessage().then((initialMessage) {
-      if (initialMessage != null) {
-        _safeShowMessage('📬 تم فتح التطبيق من إشعار أولي', debugOnly: true);
-        _safeShowMessage('Initial message  ${initialMessage.data}',
-            debugOnly: true);
-
-        // عرض SnackBar عند فتح التطبيق من الإشعار الأولي
-        final String title = initialMessage.data['title'] ??
-            initialMessage.notification?.title ??
-            '';
-        final String body = initialMessage.data['body'] ??
-            initialMessage.notification?.body ??
-            '';
-        _showFcmNotificationSnackBar(title, body);
-
-        Future.delayed(const Duration(seconds: 2), () {
-          _handleMessageOpenedApp(initialMessage);
-        });
-      }
-    }).catchError((e) {
-      _safeShowMessage('❌ خطأ في الحصول على الرسالة الأولية: $e',
-          color: Colors.red);
-    });
-    _safeShowMessage('✅ تم إعداد معالجات الرسائل', color: Colors.green);
-  } catch (e) {
-    _safeShowMessage('❌ خطأ في إعداد معالجات الرسائل: $e', color: Colors.red);
-  }
-}
+// ============================================================================
+// دوال الخدمات في الخلفية
+// ============================================================================
 
 // تهيئة الخدمات في الخلفية
 Future<void> _initializeBackgroundServices() async {
@@ -538,95 +574,103 @@ Future<void> _initializeLocalNotifications() async {
   }
 }
 
-// جدولة إشعار احتياطي
-Future<void> _scheduleFailbackNotification(
-    String title, String body, Map<String, dynamic> data) async {
+// ============================================================================
+// دوال الإشعارات
+// ============================================================================
+
+// ✅ دالة آمنة لعرض إشعارات FCM (محدثة لاستخدام الدالة الجديدة)
+void _showFcmNotificationSnackBar(String title, String body) {
   try {
-    _safeShowMessage('🔄 جدولة إشعار احتياطي...', debugOnly: true);
-    await _showDirectLocalNotification(
-      title: '⚠️ $title (احتياطي)',
-      body: '$body - تم استلام الرسالة',
-      data: data,
-      notificationId: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-    );
-    final scheduledDate = DateTime.now().add(const Duration(seconds: 20));
-    await _backgroundNotificationService.scheduleNotification(
-      title: '⚠️ $title (احتياطي)',
-      body: 'رسالة لم يتم تسليمها: $body',
-      scheduledDate: scheduledDate,
-      channelKey: 'scheduled_channel',
-      payload: {
-        'type': 'fcm_fallback',
-        'original_title': title,
-        'original_body': body,
-        'source_data': jsonEncode(data),
-        'scheduled_at': scheduledDate.toIso8601String(),
-      },
-    );
-    _safeShowMessage('✅ تم جدولة الإشعار الاحتياطي', color: Colors.green);
+    if (title.isEmpty && body.isEmpty) return;
+    
+    String message = title.isNotEmpty ? '$title: $body' : body;
+    
+    // استخدام الدالة الجديدة للرسائل الفورية
+    _showImmediateMessage('🔔 Main $message', color: Colors.blue);
   } catch (e) {
-    _safeShowMessage('❌ خطأ في جدولة الإشعار الاحتياطي: $e', color: Colors.red);
+    _safeShowMessage('⚠️ Could not show FCM notification: $e', color: Colors.orange);
   }
 }
 
-// عرض إشعار محلي مباشر
-Future<void> _showDirectLocalNotification({
-  required String title,
-  required String body,
-  required Map<String, dynamic> data,
-  required int notificationId,
-}) async {
+// ✅ تحسين _handleMessageOpenedApp للتعامل مع بنية البيانات الجديدة
+void _handleMessageOpenedApp(RemoteMessage message) {
   try {
-    const AndroidNotificationDetails androidNotificationDetails =
-        AndroidNotificationDetails(
-      'fcm_background_channel',
-      'FCM Background Notifications',
-      channelDescription: 'Notifications received when app is in background',
-      importance: Importance.high,
-      priority: Priority.high,
-      showWhen: true,
-      playSound: true,
-      enableVibration: true,
-      icon: '@mipmap/ic_launcher',
-      largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
-      actions: <AndroidNotificationAction>[
-        AndroidNotificationAction(
-          'view_action',
-          'عرض',
-          titleColor: Color.fromARGB(255, 255, 255, 255),
-        ),
-        AndroidNotificationAction(
-          'dismiss_action',
-          'إخفاء',
-          titleColor: Color.fromARGB(255, 255, 0, 0),
-          contextual: true,
-        ),
-      ],
-    );
-    const DarwinNotificationDetails iosNotificationDetails =
-        DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
-      sound: 'default',
-      badgeNumber: 1,
-    );
-    const NotificationDetails notificationDetails = NotificationDetails(
-      android: androidNotificationDetails,
-      iOS: iosNotificationDetails,
-    );
-    await _flutterLocalNotificationsPlugin.show(
-      notificationId,
-      title,
-      body,
-      notificationDetails,
-      payload: jsonEncode(data),
-    );
-    _safeShowMessage('✅ تم إظهار إشعار محلي مباشر: $title',
-        color: Colors.green);
+    _safeShowMessage('🔗 Handling message opened app...', color: Colors.blue);
+    
+    // استخراج البيانات من الحقول الجديدة
+    final data = Map<String, dynamic>.from(message.data);
+    final postId = data['post_id']?.toString() ?? '';
+    final action = data['action']?.toString().trim() ?? '';
+    final postUrl = data['post_url']?.toString().trim() ?? '';
+    
+    // استخراج معرف التذكير من post_id
+    final int? reminderId = postId.isNotEmpty ? int.tryParse(postId) : null;
+    
+    // التنقل بعد تأخير قصير للسماح بتهيئة التطبيق
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (reminderId != null) {
+        // التنقل بناءً على نوع الإجراء
+        switch (action.toLowerCase().trim()) {
+          case 'reminder_updated':
+          case 'update':
+            navigatorKey.currentState?.pushNamed(
+              '/reminder',
+              arguments: {'reminderId': reminderId},
+            );
+            break;
+          case 'reschedule':
+            navigatorKey.currentState?.pushNamed(
+              '/reminder',
+              arguments: {'reminderId': reminderId},
+            );
+            break;
+          case 'new':
+            navigatorKey.currentState?.pushNamed(
+              '/reminder',
+              arguments: {'reminderId': reminderId},
+            );
+            break;
+          case 'markas_read':
+          case 'mark_as_read':
+            navigatorKey.currentState?.pushNamed(
+              '/reminder',
+              arguments: {'reminderId': reminderId},
+            );
+            break;
+          case 'delete':
+            // في حالة الحذف، الانتقال إلى القائمة
+            navigatorKey.currentState?.pushNamedAndRemoveUntil(
+              '/reminders',
+              (route) => false,
+            );
+            break;
+          default:
+            // فتح الرابط إذا كان متاحًا
+            if (postUrl.isNotEmpty) {
+              // هنا يمكن إضافة كود لفتح الرابط
+              navigatorKey.currentState?.pushNamed(
+                '/reminder',
+                arguments: {'reminderId': reminderId},
+              );
+            } else {
+              // التنقل الافتراضي
+              navigatorKey.currentState?.pushNamedAndRemoveUntil(
+                '/reminders',
+                (route) => false,
+              );
+            }
+        }
+      } else {
+        // إذا لم يوجد معرف تذكير، انتقل إلى القائمة
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/reminders',
+          (route) => false,
+        );
+      }
+    });
+    
   } catch (e) {
-    _safeShowMessage('❌ خطأ في إظهار الإشعار المحلي المباشر: $e',
-        color: Colors.red);
+    _safeShowMessage('❌ Error in _handleMessageOpenedApp: $e', color: Colors.red);
   }
 }
 
@@ -640,62 +684,6 @@ void _handleBackgroundNotificationClick(NotificationResponse response) {
     }
   } catch (e) {
     _safeShowMessage('❌ خطأ في معالجة النقر على الإشعار: $e',
-        color: Colors.red);
-  }
-}
-
-// جدولة إشعار في المقدمة
-Future<void> _scheduleForegroundNotification(
-    RemoteMessage message, NotificationService notificationService) async {
-  try {
-    final title =
-        message.notification?.title ?? message.data['title'] ?? 'تذكير جديد';
-    final body =
-        message.notification?.body ?? message.data['body'] ?? 'لديك تذكير جديد';
-    final scheduledDate = DateTime.now().add(const Duration(seconds: 10));
-    await notificationService.scheduleNotification(
-      title: '📱 $title (مقدمة)',
-      body: body,
-      scheduledDate: scheduledDate,
-      channelKey: 'scheduled_channel',
-      payload: {
-        'type': 'fcm_foreground',
-        'source_data': jsonEncode(message.data),
-        'scheduled_at': scheduledDate.toIso8601String(),
-        ...message.data.map((key, value) => MapEntry(key, value.toString())),
-      },
-    );
-    _safeShowMessage('✅ تم جدولة إشعار المقدمة للوقت: $scheduledDate',
-        color: Colors.green);
-  } catch (e) {
-    _safeShowMessage('❌ خطأ في جدولة إشعار المقدمة: $e', color: Colors.red);
-  }
-}
-
-// معالجة فتح التطبيق من إشعار
-void _handleMessageOpenedApp(RemoteMessage message) {
-  try {
-    _safeShowMessage('🔗 معالجة فتح التطبيق من إشعار...', debugOnly: true);
-    final data = message.data;
-    if (data.containsKey('reminder_id')) {
-      final reminderId = int.tryParse(data['reminder_id'].toString());
-      if (reminderId != null) {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          navigatorKey.currentState?.pushNamed('/reminder', arguments: {
-            'reminderId': reminderId,
-          });
-        });
-        return;
-      }
-    }
-    Future.delayed(const Duration(milliseconds: 500), () {
-      navigatorKey.currentState?.pushNamedAndRemoveUntil(
-        '/reminders',
-        (route) => false,
-      );
-    });
-  } catch (e) {
-    _safeShowMessage('❌ خطأ في معالجة فتح التطبيق من إشعار: $e',
         color: Colors.red);
   }
 }
@@ -843,7 +831,7 @@ class MyApp extends StatelessWidget {
                   builder: (_) => SplashScreen(
                     isFirebaseInitialized: isFirebaseInitialized,
                     isFcmInitialized: isFcmInitialized,
-                    isRevenueCatInitialized: isRevenueCatInitialized,
+                    isRevenueCatInitialized: _isRevenueCatInitialized,
                     initializationError: initializationError,
                   ),
                 );
@@ -874,15 +862,15 @@ void callbackDispatcher() {
           final reminderId = inputData?['reminderId'];
           if (reminderId != null) {
             // هنا يمكنك إضافة كود معالجة التذكير
-            debugPrint('تم تنفيذ تذكير رقم: $reminderId');
+            _safeShowMessage('تم تنفيذ تذكير رقم: $reminderId', color: Colors.blue);
           }
           break;
         default:
-          debugPrint('مهمة غير معروفة: $task');
+          _safeShowMessage('مهمة غير معروفة: $task', color: Colors.orange);
       }
       return Future.value(true);
     } catch (e) {
-      debugPrint('خطأ في تنفيذ المهمة: $e');
+      _safeShowMessage('خطأ في تنفيذ المهمة: $e', color: Colors.red);
       return Future.value(false);
     }
   });

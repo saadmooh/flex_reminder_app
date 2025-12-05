@@ -44,38 +44,6 @@
             android:enabled="true"
             android:exported="false" />
         
-        <!-- ==================== Firebase Cloud Messaging Services ==================== -->
-        
-        <service
-            android:name="com.saadmohammed2000.flex_reminder.MyFirebaseMessagingService"
-            android:directBootAware="true"
-            android:exported="true"
-            android:stopWithTask="false">
-            <intent-filter android:priority="1000">
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
-        
-        <service
-            android:name="com.saadmohammed2000.flex_reminder.FCMForegroundService"
-            android:enabled="true"
-            android:exported="false"
-            android:stopWithTask="false"
-            android:foregroundServiceType="dataSync" />
-            
-        <!-- ==================== FCM Receivers ==================== -->
-
-        <receiver
-            android:name="com.saadmohammed2000.flex_reminder.MyFCMReceiver"
-            android:directBootAware="true"
-            android:exported="true"
-            android:permission="com.google.android.c2dm.permission.SEND">
-            <intent-filter android:priority="1000">
-                <action android:name="com.google.android.c2dm.intent.RECEIVE" />
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-                <category android:name="com.saadmohammed2000.flex_reminder" />
-            </intent-filter>
-        </receiver>
         
         <!-- ==================== Boot Receiver ==================== -->
         
@@ -154,12 +122,6 @@
             <intent-filter android:autoVerify="true">
                 <action android:name="FLUTTER_NOTIFICATION_CLICK" />
                 <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="FCM_NOTIFICATION_CLICK" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="flexreminder" />
             </intent-filter>
 
         </activity>

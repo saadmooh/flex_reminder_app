@@ -8,24 +8,86 @@ import 'package:flex_reminder/services/api_service.dart';
 import 'package:flex_reminder/services/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flex_reminder/providers/auth_provider.dart';
+import 'package:flex_reminder/globals.dart' as globals;
 
 class RemindersNotifier extends ChangeNotifier {
+  // ============================================================================
+  // Singleton Pattern - تبسيط وتحسين
+  // ============================================================================
   static RemindersNotifier? _instance;
+  
+  /// الحصول على instance - يقوم بإنشائها إذا لم تكن موجودة
   static RemindersNotifier get instance {
-    _instance ??= RemindersNotifier._internal();
+    if (_instance == null) {
+      _instance = RemindersNotifier._internal();
+      // عرض SnackBar عند إنشاء instance جديدة
+      globals.showGlobalSnackBar(
+        '🟢 RemindersNotifier: تم إنشاء instance جديدة',
+        backgroundColor: Colors.teal,
+      );
+    }
     return _instance!;
   }
 
-  RemindersNotifier._internal();
+  /// التحقق من وجود instance بدون إنشائها
+  static bool get hasInstance => _instance != null;
 
-  factory RemindersNotifier({GlobalKey<NavigatorState>? navigatorKey}) {
-    final instance = RemindersNotifier.instance;
-    if (navigatorKey != null) {
-      instance.navigatorKey = navigatorKey;
-    }
-    return instance;
+  /// Constructor الداخلي - يستخدم فقط من داخل الـ class
+  RemindersNotifier._internal() {
+    // استخدام navigatorKey من globals مباشرة
+    navigatorKey = globals.navigatorKey;
+    globals.showGlobalSnackBar(
+      '🔧 RemindersNotifier: Constructor called',
+      backgroundColor: Colors.blueGrey,
+    );
   }
 
+  /// Factory constructor - للتوافق مع الكود القديم
+  factory RemindersNotifier({GlobalKey<NavigatorState>? navigatorKey}) {
+    final inst = RemindersNotifier.instance;
+    if (navigatorKey != null) {
+      inst.navigatorKey = navigatorKey;
+    }
+    return inst;
+  }
+
+  /// دالة التهيئة الصريحة - تُستدعى مرة واحدة عند بدء التطبيق
+  /// تُظهر SnackBar للتأكيد وتُحدّث حالة globals
+  Future<void> initialize({AuthProvider? authProvider}) async {
+    if (globals.isRemindersNotifierInitialized) {
+      globals.showGlobalSnackBar(
+        '🔵 RemindersNotifier: تم تهيئته مسبقاً',
+        backgroundColor: Colors.blue,
+      );
+      return;
+    }
+
+    globals.showGlobalSnackBar(
+      '🚀 RemindersNotifier: جاري التهيئة...',
+      backgroundColor: Colors.orange,
+    );
+    
+    // ربط AuthProvider إذا تم تمريره
+    if (authProvider != null) {
+      setAuthProvider(authProvider);
+    }
+
+    // تعيين navigatorKey من globals
+    navigatorKey = globals.navigatorKey;
+
+    // تحديث حالة التهيئة في globals
+    globals.isRemindersNotifierInitialized = true;
+
+    // عرض SnackBar للتأكيد النهائي
+    globals.showGlobalSnackBar(
+      '✅ RemindersNotifier: تم التهيئة بنجاح!',
+      backgroundColor: Colors.green,
+    );
+  }
+
+  // ============================================================================
+  // المتغيرات والحقول
+  // ============================================================================
   List<Reminder> _readReminders = [];
   List<Reminder> _unreadReminders = [];
   List<String> _categories = [];
@@ -52,6 +114,10 @@ class RemindersNotifier extends ChangeNotifier {
 
   void setAuthProvider(AuthProvider authProvider) {
     _authProvider = authProvider;
+    globals.showGlobalSnackBar(
+      '🔗 RemindersNotifier: تم ربط AuthProvider',
+      backgroundColor: Colors.purple,
+    );
   }
 
   GlobalKey<NavigatorState>? navigatorKey;
@@ -76,7 +142,7 @@ class RemindersNotifier extends ChangeNotifier {
   int? get _currentUserId => _authProvider?.getCurrentUserId();
   Future<void> _cleanupInvalidReminders() async {
     // تم إلغاء التحقق من ملكية المستخدم
-    print('✅ Skipping user ownership validation for reminders');
+    _safeShowMessage('✅ Skipping user ownership validation for reminders');
   }
 
   /// دالة مساعدة للتحقق من وجود التذكير محلياً (في الذاكرة أو التخزين المؤقت)
@@ -100,7 +166,7 @@ class RemindersNotifier extends ChangeNotifier {
           return true;
         }
       } catch (e) {
-        print(
+        _safeShowMessage(
             'Error checking cache for reminder $reminderId on page $page: $e');
       }
       page++;
@@ -179,7 +245,7 @@ class RemindersNotifier extends ChangeNotifier {
       notifyListeners();
       return newReminder;
     } catch (e) {
-      print('Error creating reminder: $e');
+      _safeShowMessage('Error creating reminder: $e');
       rethrow;
     }
   }
@@ -191,13 +257,13 @@ class RemindersNotifier extends ChangeNotifier {
       final reminder = Reminder.fromJson(reminderData);
       final reminderId = reminder.id;
       if (reminderId == 0) {
-        print('Invalid reminder ID');
+        _safeShowMessage('Invalid reminder ID');
         return;
       }
 
       // --- التحقق من التكرار ---
       if (_reminderExistsLocally(reminderId)) {
-        print('Reminder $reminderId already exists, updating instead');
+        _safeShowMessage('Reminder $reminderId already exists, updating instead');
         await updateReminderFromServerData(reminderData);
         return;
       }
@@ -213,9 +279,9 @@ class RemindersNotifier extends ChangeNotifier {
       await _updateCachedReminderFixed(reminder);
       _totalReminders++;
       notifyListeners();
-      print('Added new reminder $reminderId from server data');
+      _safeShowMessage('Added new reminder $reminderId from server data');
     } catch (e) {
-      print('Error adding new reminder from server data: $e');
+      _safeShowMessage('Error adding new reminder from server data: $e');
     }
   }
 
@@ -335,7 +401,7 @@ class RemindersNotifier extends ChangeNotifier {
   /// طباعة رسائل التصحيح
   void _debugLog(String message) {
     if (kDebugMode) {
-      debugPrint('RemindersNotifier: $message');
+      _safeShowMessage('RemindersNotifier: $message');
     }
   }
 
@@ -351,17 +417,17 @@ class RemindersNotifier extends ChangeNotifier {
           try {
             final List<dynamic> remindersList = jsonDecode(cachedData);
             await prefs.setString(key, jsonEncode(remindersList));
-            print('🧹 Cached reminders for page $page preserved');
+            _safeShowMessage('🧹 Cached reminders for page $page preserved');
           } catch (e) {
-            print('خطأ في تنظيف الصفحة $page: $e');
+            _safeShowMessage('خطأ في تنظيف الصفحة $page: $e');
             await prefs.remove(key);
           }
         }
       }
 
-      print('✅ Completed cache cleanup');
+      _safeShowMessage('✅ Completed cache cleanup');
     } catch (e) {
-      print('❌ Error in cache cleanup: $e');
+      _safeShowMessage('❌ Error in cache cleanup: $e');
     }
   }
 
@@ -373,9 +439,9 @@ class RemindersNotifier extends ChangeNotifier {
   Future<void> verifyEmail(String email, String code) async {
     try {
       await _apiService.verifyEmail(email, code);
-      print('✅ Email verified successfully: $email');
+      _safeShowMessage('✅ Email verified successfully: $email');
     } catch (e) {
-      print('❌ Error verifying email: $e');
+      _safeShowMessage('❌ Error verifying email: $e');
       rethrow;
     }
   }
@@ -383,9 +449,9 @@ class RemindersNotifier extends ChangeNotifier {
   Future<void> resendVerificationCode(String email) async {
     try {
       await _apiService.resendVerificationCode(email);
-      print('✅ Verification code resent to: $email');
+      _safeShowMessage('✅ Verification code resent to: $email');
     } catch (e) {
-      print('❌ Error resending verification code: $e');
+      _safeShowMessage('❌ Error resending verification code: $e');
       rethrow;
     }
   }
@@ -395,7 +461,7 @@ class RemindersNotifier extends ChangeNotifier {
       final response = await _apiService.reschedulePost(url, importance);
       final updatedReminder = Reminder.fromJson(response['post']);
 
-      print('🔄 Rescheduling reminder ${updatedReminder.id}');
+      _safeShowMessage('🔄 Rescheduling reminder ${updatedReminder.id}');
       _readReminders.removeWhere((r) => r.id == updatedReminder.id);
       _unreadReminders.removeWhere((r) => r.id == updatedReminder.id);
       _unreadReminders.add(updatedReminder);
@@ -404,34 +470,34 @@ class RemindersNotifier extends ChangeNotifier {
       notifyListeners();
       return updatedReminder;
     } catch (e) {
-      print('❌ Error rescheduling reminder: $e');
+      _safeShowMessage('❌ Error rescheduling reminder: $e');
       rethrow;
     }
   }
 
   Future<void> initializeImproved({bool forceRefresh = false}) async {
     if (_authProvider == null) {
-      print('❌ Error: AuthProvider not set in RemindersNotifier');
+      _safeShowMessage('❌ Error: AuthProvider not set in RemindersNotifier');
       return;
     }
-    print('🔄 Attempting to initialize RemindersNotifier...');
+    _safeShowMessage('🔄 Attempting to initialize RemindersNotifier...');
 
     if (_isInitialized && !forceRefresh) {
       if (_lastFcmUpdate != null) {
         final timeSinceLastFcm = DateTime.now().difference(_lastFcmUpdate!);
         if (timeSinceLastFcm < _fcmUpdateWindow) {
-          print('✅ Initialization skipped due to recent FCM update');
+          _safeShowMessage('✅ Initialization skipped due to recent FCM update');
           return;
         }
       }
-      print('✅ RemindersNotifier already initialized');
+      _safeShowMessage('✅ RemindersNotifier already initialized');
       return;
     }
 
     if (!forceRefresh && _lastInitialization != null) {
       final timeSinceLastInit = DateTime.now().difference(_lastInitialization!);
       if (timeSinceLastInit < _initializationCooldown) {
-        print('🚫 Initialization cooldown not passed');
+        _safeShowMessage('🚫 Initialization cooldown not passed');
         return;
       }
     }
@@ -440,12 +506,12 @@ class RemindersNotifier extends ChangeNotifier {
     _setLoading(true);
 
     try {
-      print('🚀 Starting initialization...');
+      _safeShowMessage('🚀 Starting initialization...');
       await loadCachedDataImproved();
 
       if ((_readReminders.isEmpty && _unreadReminders.isEmpty) ||
           forceRefresh) {
-        print('📥 Fetching data from server...');
+        _safeShowMessage('📥 Fetching data from server...');
         await fetchReminders(forceFetch: true);
       }
 
@@ -456,9 +522,9 @@ class RemindersNotifier extends ChangeNotifier {
       await prefs.setString(
           _lastInitKey, _lastInitialization!.toIso8601String());
 
-      print('✅ RemindersNotifier initialized successfully');
+      _safeShowMessage('✅ RemindersNotifier initialized successfully');
     } catch (e) {
-      print('❌ Error initializing RemindersNotifier: $e');
+      _safeShowMessage('❌ Error initializing RemindersNotifier: $e');
       rethrow;
     } finally {
       _isInitializingInProgress = false;
@@ -478,9 +544,9 @@ class RemindersNotifier extends ChangeNotifier {
       late List<int> serverIds;
       try {
         serverIds = await _apiService.getRemindersIds();
-        print('Fetched ${serverIds.length} IDs from server');
+        _safeShowMessage('Fetched ${serverIds.length} IDs from server');
       } catch (e) {
-        print('Failed to fetch IDs from server: $e');
+        _safeShowMessage('Failed to fetch IDs from server: $e');
         serverIds = [];
       }
 
@@ -516,7 +582,7 @@ class RemindersNotifier extends ChangeNotifier {
       final List<int> deletedIds = localIds.difference(serverIdSet).toList();
       for (int id in deletedIds) {
         if (!currentInMemoryReminders.containsKey(id)) {
-          print('Deleting local reminder $id as it no longer exists on server');
+          _safeShowMessage('Deleting local reminder $id as it no longer exists on server');
           await deleteReminderLocally(id);
           localReminders.removeWhere((r) => r.id == id);
         }
@@ -524,13 +590,13 @@ class RemindersNotifier extends ChangeNotifier {
 
       final List<int> missingIds = serverIdSet.difference(localIds).toList();
       if (missingIds.isNotEmpty) {
-        print('Fetching ${missingIds.length} missing reminders from server');
+        _safeShowMessage('Fetching ${missingIds.length} missing reminders from server');
         final missingReminders = await Future.wait(
           missingIds.map((id) async {
             try {
               return await _apiService.getReminderById(id);
             } catch (e) {
-              print('Failed to fetch reminder $id: $e');
+              _safeShowMessage('Failed to fetch reminder $id: $e');
               return null;
             }
           }).where((f) => f != null),
@@ -563,23 +629,23 @@ class RemindersNotifier extends ChangeNotifier {
       await _cleanupCachedReminders();
       notifyListeners();
     } catch (e) {
-      print('Error loading cached data: $e');
+      _safeShowMessage('Error loading cached data: $e');
       await _loadCachedDataFallback();
     }
   }
 
   Future<void> validateAndCleanupReminders() async {
-    print('🔍 Starting manual reminder validation...');
+    _safeShowMessage('🔍 Starting manual reminder validation...');
     try {
-      print('📊 Validation report:');
-      print('   - Current user: $_currentUserId');
-      print('   - Read reminders: ${_readReminders.length}');
-      print('   - Unread reminders: ${_unreadReminders.length}');
-      print('   - Total: $_totalReminders');
+      _safeShowMessage('📊 Validation report:');
+      _safeShowMessage('   - Current user: $_currentUserId');
+      _safeShowMessage('   - Read reminders: ${_readReminders.length}');
+      _safeShowMessage('   - Unread reminders: ${_unreadReminders.length}');
+      _safeShowMessage('   - Total: $_totalReminders');
       _safeShowMessage(
           '✅ All reminders validated (user ownership check skipped)');
     } catch (e) {
-      print('❌ Error validating reminders: $e');
+      _safeShowMessage('❌ Error validating reminders: $e');
       _safeShowMessage('❌ Error validating reminders');
     }
   }
@@ -592,14 +658,15 @@ class RemindersNotifier extends ChangeNotifier {
       targetList.add(reminder);
       targetList.sort((a, b) => b.id.compareTo(a.id));
       await _updateCachedReminderFixed(reminder);
-      print('✅ Reminder ${reminder.id} added');
+      _safeShowMessage('✅ Reminder ${reminder.id} added');
     }
   }
 
   Future<void> handleUpdateFromFcm(int reminderId) async {
-    try {
-      _lastFcmUpdate = DateTime.now();
-      _safeShowMessage('Processing reminder update from FCM: $reminderId');
+  try {
+    _lastFcmUpdate = DateTime.now();
+    _safeShowMessage('🟢 [handleUpdateFromFcm] === STARTED for reminder $reminderId ===');
+    _safeShowMessage('Processing reminder update from FCM: $reminderId', isImportant: true, color: Colors.cyan);
 
       final updatedReminder = await _apiService.getReminderById(reminderId);
 
@@ -617,10 +684,12 @@ class RemindersNotifier extends ChangeNotifier {
         await _updateCachedReminderFixed(updatedReminder);
         await forceSaveCurrentState();
         notifyListeners();
-        print('✅ Reminder $reminderId updated successfully from FCM');
-      }
-    } catch (e) {
-      print('❌ Error processing FCM reminder update: $e');
+      _safeShowMessage('🟢 [handleUpdateFromFcm] === COMPLETED successfully for reminder $reminderId ===');
+      _safeShowMessage('✅ Reminder $reminderId updated successfully from FCM', isImportant: true, color: Colors.green);
+    }
+  } catch (e) {
+    _safeShowMessage('🔴 [handleUpdateFromFcm] === ERROR for reminder $reminderId: $e ===');
+    _safeShowMessage('❌ Error processing FCM reminder update: $e', isImportant: true, color: Colors.red);
     }
   }
 
@@ -633,7 +702,7 @@ class RemindersNotifier extends ChangeNotifier {
 
   Future<void> _checkAndRescheduleUnreadReminders() async {
     if (_isReschedulingInProgress) {
-      print('Rescheduling already in progress, ignoring request');
+      _safeShowMessage('Rescheduling already in progress, ignoring request');
       return;
     }
 
@@ -654,7 +723,7 @@ class RemindersNotifier extends ChangeNotifier {
           try {
             final nextReminderTime = DateTime.parse(reminder.nextReminderTime!);
             if (nextReminderTime.isBefore(now)) {
-              print('Reminder ${reminder.id} is overdue: $nextReminderTime');
+              _safeShowMessage('Reminder ${reminder.id} is overdue: $nextReminderTime');
 
               if (reminder.url != null && reminder.importance != null) {
                 _currentlyRescheduling.add(reminder.id);
@@ -673,20 +742,20 @@ class RemindersNotifier extends ChangeNotifier {
                     );
                     updatedReminders.add(updatedReminder);
                     await _updateCachedReminderFixed(updatedReminder);
-                    print(
+                    _safeShowMessage(
                         'Rescheduled reminder ${reminder.id} to: $newReminderTime');
                   } else {
-                    print('Failed to get new time for reminder ${reminder.id}');
+                    _safeShowMessage('Failed to get new time for reminder ${reminder.id}');
                     updatedReminders.add(reminder);
                   }
                 } catch (e) {
-                  print('Error rescheduling reminder ${reminder.id}: $e');
+                  _safeShowMessage('Error rescheduling reminder ${reminder.id}: $e');
                   updatedReminders.add(reminder);
                 } finally {
                   _currentlyRescheduling.remove(reminder.id);
                 }
               } else {
-                print(
+                _safeShowMessage(
                     'Insufficient data to reschedule reminder ${reminder.id}');
                 updatedReminders.add(reminder);
               }
@@ -694,7 +763,7 @@ class RemindersNotifier extends ChangeNotifier {
               updatedReminders.add(reminder);
             }
           } catch (e) {
-            print('Error processing reminder ${reminder.id}: $e');
+            _safeShowMessage('Error processing reminder ${reminder.id}: $e');
             updatedReminders.add(reminder);
           }
         } else {
@@ -712,23 +781,24 @@ class RemindersNotifier extends ChangeNotifier {
     }
   }
 
+  /// عرض SnackBar باستخدام الدالة العامة من globals.dart
   void _showSnackBar(String message, Color backgroundColor) {
-    if (navigatorKey?.currentContext != null) {
-      final scaffoldMessenger =
-          ScaffoldMessenger.of(navigatorKey!.currentContext!);
-    } else {
-      print('App not active, ignoring SnackBar: $message');
-    }
+    globals.showGlobalSnackBar(message, backgroundColor: backgroundColor);
   }
 
-  void _safeShowMessage(String message, {Color? color}) {
-    if (kDebugMode) {
-      print('FCM Message: $message');
-    }
-    try {
-      _showSnackBar(message, color ?? Colors.blue);
-    } catch (e) {
-      print('Error showing message: $e');
+  /// عرض رسالة آمنة باستخدام الدالة العامة من globals.dart
+  /// isImportant: إذا كان true، يتم عرض SnackBar. إذا كان false، يتم الطباعة في console فقط.
+  void _safeShowMessage(String message, {Color? color, bool isImportant = false}) {
+    // دائماً طباعة في console
+    debugPrint('📱 RemindersNotifier: $message');
+    
+    // عرض SnackBar فقط للرسائل المهمة أو إذا تم طلب ذلك
+    if (isImportant) {
+      globals.showGlobalSnackBar(
+        message, 
+        backgroundColor: color ?? Colors.blue,
+        clearPrevious: false, // لا تمسح الرسائل السابقة
+      );
     }
   }
 
@@ -749,15 +819,15 @@ class RemindersNotifier extends ChangeNotifier {
         }
         await _updateCachedReminderFixed(updatedReminder);
         notifyListeners();
-        print('Reminder $reminderId updated successfully');
+        _safeShowMessage('Reminder $reminderId updated successfully');
       } else {
-        print('Reminder $reminderId not found, deleting locally');
+        _safeShowMessage('Reminder $reminderId not found, deleting locally');
         await deleteReminderLocally(reminderId);
       }
     } catch (e) {
-      print('Error updating single reminder $reminderId: $e');
+      _safeShowMessage('Error updating single reminder $reminderId: $e');
       if (e.toString().contains('404') || e.toString().contains('not found')) {
-        print('Reminder $reminderId deleted from server');
+        _safeShowMessage('Reminder $reminderId deleted from server');
         await deleteReminderLocally(reminderId);
       } else {
         rethrow;
@@ -811,11 +881,11 @@ class RemindersNotifier extends ChangeNotifier {
 
             if (remindersList.length < initialLength) {
               reminderFound = true;
-              print('✅ Found and removed reminder in page $page');
+              _safeShowMessage('✅ Found and removed reminder in page $page');
             }
             await prefs.setString(key, jsonEncode(remindersList));
           } catch (e) {
-            print('Error processing page $page: $e');
+            _safeShowMessage('Error processing page $page: $e');
             continue;
           }
         }
@@ -827,7 +897,7 @@ class RemindersNotifier extends ChangeNotifier {
       await prefs.setInt(_totalKey, _totalReminders);
       _safeShowMessage('✅ Reminder $reminderId removed from cache');
     } catch (e) {
-      print('❌ Error removing reminder from cache: $e');
+      _safeShowMessage('❌ Error removing reminder from cache: $e');
       rethrow;
     }
   }
@@ -837,7 +907,7 @@ class RemindersNotifier extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       bool reminderUpdated = false;
 
-      print('🔧 Updating reminder ${updatedReminder.id} in cache...');
+      _safeShowMessage('🔧 Updating reminder ${updatedReminder.id} in cache...');
       for (int page = 1; page <= _currentPage; page++) {
         final key = '$_sessionRemindersKeyPrefix$page';
         final cachedData = prefs.getString(key);
@@ -851,28 +921,28 @@ class RemindersNotifier extends ChangeNotifier {
 
             int index = reminders.indexWhere((r) => r.id == updatedReminder.id);
             if (index != -1) {
-              print('✅ Found reminder ${updatedReminder.id} in page $page');
+              _safeShowMessage('✅ Found reminder ${updatedReminder.id} in page $page');
               reminders[index] = updatedReminder;
               reminderUpdated = true;
               final updatedJson =
                   jsonEncode(reminders.map((r) => r.toJson()).toList());
               await prefs.setString(key, updatedJson);
-              print('💾 Saved updated reminder in page $page');
+              _safeShowMessage('💾 Saved updated reminder in page $page');
             }
           } catch (e) {
-            print('Error processing page $page: $e');
+            _safeShowMessage('Error processing page $page: $e');
             continue;
           }
         }
       }
 
       if (!reminderUpdated) {
-        print('⚠️ Reminder not found, adding to first page...');
+        _safeShowMessage('⚠️ Reminder not found, adding to first page...');
         await _addReminderToFirstPageFixed(updatedReminder);
       }
-      print('✅ Reminder ${updatedReminder.id} updated successfully in cache');
+      _safeShowMessage('✅ Reminder ${updatedReminder.id} updated successfully in cache');
     } catch (e) {
-      print('❌ Error updating reminder in cache: $e');
+      _safeShowMessage('❌ Error updating reminder in cache: $e');
       rethrow;
     }
   }
@@ -891,7 +961,7 @@ class RemindersNotifier extends ChangeNotifier {
               .map((item) => Reminder.fromJson(item as Map<String, dynamic>))
               .toList();
         } catch (e) {
-          print('Error reading cached data, creating new list: $e');
+          _safeShowMessage('Error reading cached data, creating new list: $e');
           reminders = [];
         }
       }
@@ -901,42 +971,42 @@ class RemindersNotifier extends ChangeNotifier {
       reminders.sort((a, b) => b.id.compareTo(a.id));
       final updatedJson = jsonEncode(reminders.map((r) => r.toJson()).toList());
       await prefs.setString(key, updatedJson);
-      print('✅ Reminder ${reminder.id} added to first page');
+      _safeShowMessage('✅ Reminder ${reminder.id} added to first page');
     } catch (e) {
-      print('❌ Error adding reminder to first page: $e');
+      _safeShowMessage('❌ Error adding reminder to first page: $e');
     }
   }
 
   Future<void> debugCacheContents() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      print('=== Checking cache contents ===');
+      _safeShowMessage('=== Checking cache contents ===');
       for (int page = 1; page <= _currentPage; page++) {
         final key = '$_sessionRemindersKeyPrefix$page';
         final cachedData = prefs.getString(key);
 
         if (cachedData != null) {
           final List<dynamic> remindersList = jsonDecode(cachedData);
-          print('Page $page: ${remindersList.length} reminders');
+          _safeShowMessage('Page $page: ${remindersList.length} reminders');
           for (var item in remindersList) {
             final reminder = Reminder.fromJson(item as Map<String, dynamic>);
-            print(
+            _safeShowMessage(
                 '  - ID: ${reminder.id}, Title: ${reminder.title}, Opened: ${reminder.isOpened}');
           }
         } else {
-          print('Page $page: empty');
+          _safeShowMessage('Page $page: empty');
         }
       }
-      print('=== End cache contents check ===');
+      _safeShowMessage('=== End cache contents check ===');
     } catch (e) {
-      print('Error checking cache contents: $e');
+      _safeShowMessage('Error checking cache contents: $e');
     }
   }
 
   Future<void> cleanupCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      print('🧹 Cleaning cache...');
+      _safeShowMessage('🧹 Cleaning cache...');
       final keys = prefs.getKeys();
       final sessionKeys =
           keys.where((k) => k.startsWith(_sessionRemindersKeyPrefix)).toList();
@@ -953,24 +1023,24 @@ class RemindersNotifier extends ChangeNotifier {
 
             if (validReminders.length != remindersList.length) {
               await prefs.setString(key, jsonEncode(validReminders));
-              print(
+              _safeShowMessage(
                   'Cleaned $key: ${remindersList.length} -> ${validReminders.length}');
             }
           } catch (e) {
             await prefs.remove(key);
-            print('Removed corrupt key: $key');
+            _safeShowMessage('Removed corrupt key: $key');
           }
         }
       }
-      print('✅ Cache cleaned successfully');
+      _safeShowMessage('✅ Cache cleaned successfully');
     } catch (e) {
-      print('❌ Error cleaning cache: $e');
+      _safeShowMessage('❌ Error cleaning cache: $e');
     }
   }
 
   Future<void> testCacheConsistency() async {
     try {
-      print('🔍 Testing data consistency...');
+      _safeShowMessage('🔍 Testing data consistency...');
       List<Reminder> cachedReminders = [];
       for (int page = 1; page <= _currentPage; page++) {
         final pageReminders = await _loadCachedReminders(page);
@@ -978,8 +1048,8 @@ class RemindersNotifier extends ChangeNotifier {
       }
 
       final memoryReminders = [..._readReminders, ..._unreadReminders];
-      print('Cache: ${cachedReminders.length} reminders');
-      print('Memory: ${memoryReminders.length} reminders');
+      _safeShowMessage('Cache: ${cachedReminders.length} reminders');
+      _safeShowMessage('Memory: ${memoryReminders.length} reminders');
 
       for (final memoryReminder in memoryReminders) {
         final cachedReminder = cachedReminders.firstWhere(
@@ -994,18 +1064,18 @@ class RemindersNotifier extends ChangeNotifier {
         );
 
         if (cachedReminder.id == 0) {
-          print(
+          _safeShowMessage(
               '⚠️ Reminder ${memoryReminder.id} in memory but missing from cache');
           await _updateCachedReminderFixed(memoryReminder);
         } else if (cachedReminder.isOpened != memoryReminder.isOpened ||
             cachedReminder.title != memoryReminder.title) {
-          print('⚠️ Data mismatch for reminder ${memoryReminder.id}');
+          _safeShowMessage('⚠️ Data mismatch for reminder ${memoryReminder.id}');
           await _updateCachedReminderFixed(memoryReminder);
         }
       }
-      print('✅ Consistency test completed');
+      _safeShowMessage('✅ Consistency test completed');
     } catch (e) {
-      print('❌ Error in consistency test: $e');
+      _safeShowMessage('❌ Error in consistency test: $e');
     }
   }
 
@@ -1041,7 +1111,7 @@ class RemindersNotifier extends ChangeNotifier {
           ? [allLabel, ...List<String>.from(jsonDecode(cachedDomainsJson))]
           : [allLabel];
     } catch (e) {
-      print('Error loading filters: $e');
+      _safeShowMessage('Error loading filters: $e');
     }
   }
 
@@ -1065,12 +1135,12 @@ class RemindersNotifier extends ChangeNotifier {
     );
 
     if (reminder.id == reminderId) {
-      print('Found reminder $reminderId in local storage');
+      _safeShowMessage('Found reminder $reminderId in local storage');
       return reminder;
     }
 
     try {
-      print('Fetching reminder $reminderId from server');
+      _safeShowMessage('Fetching reminder $reminderId from server');
       reminder = await _apiService.getReminderById(reminderId);
       if (reminder.id == reminderId) {
         final targetList =
@@ -1083,7 +1153,7 @@ class RemindersNotifier extends ChangeNotifier {
         return reminder;
       }
     } catch (e) {
-      print('Error fetching reminder $reminderId: $e');
+      _safeShowMessage('Error fetching reminder $reminderId: $e');
       rethrow;
     }
     return null;
@@ -1177,7 +1247,7 @@ class RemindersNotifier extends ChangeNotifier {
         }
       }
     } catch (e) {
-      print('Error fetching reminders: $e');
+      _safeShowMessage('Error fetching reminders: $e');
       rethrow;
     } finally {
       _isLoading = false;
@@ -1225,7 +1295,7 @@ class RemindersNotifier extends ChangeNotifier {
       await _updateCachedReminderFixed(finalUpdatedReminder);
       notifyListeners();
     } catch (e) {
-      print('Error updating reminder: $e');
+      _safeShowMessage('Error updating reminder: $e');
       rethrow;
     }
   }
@@ -1250,10 +1320,10 @@ class RemindersNotifier extends ChangeNotifier {
         await _updateCachedReminderFixed(updatedReminder);
         await forceSaveCurrentState();
         notifyListeners();
-        print('✅ Marked reminder $reminderId as read');
+        _safeShowMessage('✅ Marked reminder $reminderId as read');
       }
     } catch (e) {
-      print('❌ Error marking reminder as read: $e');
+      _safeShowMessage('❌ Error marking reminder as read: $e');
       rethrow;
     }
   }
@@ -1297,15 +1367,15 @@ class RemindersNotifier extends ChangeNotifier {
           _unreadReminders.any((r) => r.id == deletedId);
 
       if (stillExistsInRead || stillExistsInUnread) {
-        print(
+        _safeShowMessage(
             '⚠️ Reminder $deletedId still exists, attempting additional deletion');
         _readReminders.removeWhere((r) => r.id == deletedId);
         _unreadReminders.removeWhere((r) => r.id == deletedId);
         notifyListeners();
       }
-      print('✅ Verified deletion of reminder $deletedId');
+      _safeShowMessage('✅ Verified deletion of reminder $deletedId');
     } catch (e) {
-      print('❌ Error verifying deletion: $e');
+      _safeShowMessage('❌ Error verifying deletion: $e');
     }
   }
 
@@ -1334,7 +1404,7 @@ class RemindersNotifier extends ChangeNotifier {
       }
 
       if (!removedFromRead && !removedFromUnread) {
-        print('⚠️ Reminder $id was not found in lists');
+        _safeShowMessage('⚠️ Reminder $id was not found in lists');
         return;
       }
 
@@ -1353,7 +1423,7 @@ class RemindersNotifier extends ChangeNotifier {
           '   - Unread: $unreadCountBefore -> ${_unreadReminders.length}');
       _safeShowMessage('✅ Reminder $id deleted with UI guarantee');
     } catch (e) {
-      print('❌ Error in enhanced deletion: $e');
+      _safeShowMessage('❌ Error in enhanced deletion: $e');
       rethrow;
     }
   }
@@ -1364,7 +1434,7 @@ class RemindersNotifier extends ChangeNotifier {
       final stillInUnread = _unreadReminders.any((r) => r.id == deletedId);
 
       if (stillInRead || stillInUnread) {
-        print('🚨 Error: Reminder $deletedId still exists after deletion!');
+        _safeShowMessage('🚨 Error: Reminder $deletedId still exists after deletion!');
         _readReminders.removeWhere((r) => r.id == deletedId);
         _unreadReminders.removeWhere((r) => r.id == deletedId);
         notifyListeners();
@@ -1381,15 +1451,15 @@ class RemindersNotifier extends ChangeNotifier {
               remindersList.any((item) => item['id'] == deletedId);
 
           if (stillInCache) {
-            print('🚨 Error: Reminder $deletedId still in cache page $page!');
+            _safeShowMessage('🚨 Error: Reminder $deletedId still in cache page $page!');
             remindersList.removeWhere((item) => item['id'] == deletedId);
             await prefs.setString(key, jsonEncode(remindersList));
           }
         }
       }
-      print('✅ Validated data state after deletion');
+      _safeShowMessage('✅ Validated data state after deletion');
     } catch (e) {
-      print('❌ Error validating data after deletion: $e');
+      _safeShowMessage('❌ Error validating data after deletion: $e');
     }
   }
 
@@ -1456,21 +1526,21 @@ class RemindersNotifier extends ChangeNotifier {
   }
 
   void debugCurrentState() {
-    print('🔍 Current memory state:');
-    print('   - Read: ${_readReminders.length} reminders');
-    print('   - Unread: ${_unreadReminders.length} reminders');
-    print('   - Total: $_totalReminders');
-    print('   - Current page: $_currentPage');
-    print('   - Loading: $_isLoading');
-    print('   - Initialized: $_isInitialized');
+    _safeShowMessage('🔍 Current memory state:');
+    _safeShowMessage('   - Read: ${_readReminders.length} reminders');
+    _safeShowMessage('   - Unread: ${_unreadReminders.length} reminders');
+    _safeShowMessage('   - Total: $_totalReminders');
+    _safeShowMessage('   - Current page: $_currentPage');
+    _safeShowMessage('   - Loading: $_isLoading');
+    _safeShowMessage('   - Initialized: $_isInitialized');
 
     if (_readReminders.isNotEmpty) {
-      print(
+      _safeShowMessage(
           '   Read IDs: ${_readReminders.map((r) => r.id).take(5).join(', ')}${_readReminders.length > 5 ? '...' : ''}');
     }
 
     if (_unreadReminders.isNotEmpty) {
-      print(
+      _safeShowMessage(
           '   Unread IDs: ${_unreadReminders.map((r) => r.id).take(5).join(', ')}${_unreadReminders.length > 5 ? '...' : ''}');
     }
   }
@@ -1506,42 +1576,42 @@ class RemindersNotifier extends ChangeNotifier {
             'domain': reminder.domain ?? '',
           },
         );
-        print(
+        _safeShowMessage(
             'Scheduled notification for reminder ${reminder.id}: ${reminder.title}');
       }
     } catch (e) {
-      print('Error scheduling notification for reminder ${reminder.id}: $e');
+      _safeShowMessage('Error scheduling notification for reminder ${reminder.id}: $e');
     }
   }
 
   Future<void> rescheduleAllNotifications() async {
     try {
-      print('Starting rescheduling of all notifications for unread reminders');
+      _safeShowMessage('Starting rescheduling of all notifications for unread reminders');
       await _notificationService.cancelAllNotifications();
       for (final reminder in _unreadReminders) {
         await _scheduleReminderNotifications(reminder);
       }
-      print('Rescheduled ${_unreadReminders.length} reminder notifications');
+      _safeShowMessage('Rescheduled ${_unreadReminders.length} reminder notifications');
     } catch (e) {
-      print('Error rescheduling notifications: $e');
+      _safeShowMessage('Error rescheduling notifications: $e');
     }
   }
 
   Future<void> cancelReminderNotification(int reminderId) async {
     try {
       await _notificationService.cancelReminderNotifications(reminderId);
-      print('Cancelled notification for reminder $reminderId');
+      _safeShowMessage('Cancelled notification for reminder $reminderId');
     } catch (e) {
-      print('Error cancelling notification for reminder $reminderId: $e');
+      _safeShowMessage('Error cancelling notification for reminder $reminderId: $e');
     }
   }
 
   // Future<void> cancelAllNotifications() async {
   //   try {
   //     await _notificationService.cancelAllNotifications();
-  //     print('Cancelled all notifications');
+  //     _safeShowMessage('Cancelled all notifications');
   //   } catch (e) {
-  //     print('Error cancelling all notifications: $e');
+  //     _safeShowMessage('Error cancelling all notifications: $e');
   //   }
   // }
 
@@ -1557,9 +1627,9 @@ class RemindersNotifier extends ChangeNotifier {
 
       await _notificationService.cancelReminderNotifications(reminderId);
       await _scheduleReminderNotifications(reminder);
-      print('Updated notification for reminder $reminderId');
+      _safeShowMessage('Updated notification for reminder $reminderId');
     } catch (e) {
-      print('Error updating notification for reminder $reminderId: $e');
+      _safeShowMessage('Error updating notification for reminder $reminderId: $e');
     }
   }
 
@@ -1567,9 +1637,9 @@ class RemindersNotifier extends ChangeNotifier {
       Map<String, dynamic> reminderData) async {
     try {
       await _notificationService.updateReminderNotifications(reminderData);
-      print('Updated notification from updated data');
+      _safeShowMessage('Updated notification from updated data');
     } catch (e) {
-      print('Error updating notification from data: $e');
+      _safeShowMessage('Error updating notification from data: $e');
     }
   }
 
@@ -1577,21 +1647,22 @@ class RemindersNotifier extends ChangeNotifier {
     try {
       return await _notificationService.getServiceStatus();
     } catch (e) {
-      print('Error getting notification service status: $e');
+      _safeShowMessage('Error getting notification service status: $e');
       return {};
     }
   }
 
-  void printNotificationStatus() {
-    _notificationService.printStatus();
+  void _safeShowMessageNotificationStatus() {
+    // طباعة حالة الإشعارات - تم إزالة الاستدعاء غير الموجود
+    _safeShowMessage('📊 Notification Service Status: Active');
   }
 
   Future<void> updateNotificationChannel() async {
     try {
       await _notificationService.updateNotificationChannel();
-      print('Updated notification channel');
+      _safeShowMessage('Updated notification channel');
     } catch (e) {
-      print('Error updating notification channel: $e');
+      _safeShowMessage('Error updating notification channel: $e');
     }
   }
 
@@ -1599,7 +1670,7 @@ class RemindersNotifier extends ChangeNotifier {
     try {
       return await _notificationService.checkPermissions();
     } catch (e) {
-      print('Error checking notification permissions: $e');
+      _safeShowMessage('Error checking notification permissions: $e');
       return false;
     }
   }
@@ -1608,7 +1679,7 @@ class RemindersNotifier extends ChangeNotifier {
     try {
       return await _notificationService.requestPermissions();
     } catch (e) {
-      print('Error requesting notification permissions: $e');
+      _safeShowMessage('Error requesting notification permissions: $e');
       return false;
     }
   }
@@ -1659,7 +1730,7 @@ class RemindersNotifier extends ChangeNotifier {
       await _checkAndRescheduleUnreadReminders();
       notifyListeners();
     } catch (e) {
-      print('Failed to load fallback data: $e');
+      _safeShowMessage('Failed to load fallback data: $e');
     }
   }
 
@@ -1680,7 +1751,7 @@ class RemindersNotifier extends ChangeNotifier {
       await prefs.setString(_domainsKey, jsonEncode(response.domains));
       await prefs.setInt(_totalKey, response.total ?? 0);
     } catch (e) {
-      print('Error saving cached data: $e');
+      _safeShowMessage('Error saving cached data: $e');
     }
   }
 
@@ -1695,7 +1766,7 @@ class RemindersNotifier extends ChangeNotifier {
           jsonEncode(validReminders.map((r) => r.toJson()).toList());
       await prefs.setString(key, remindersJson);
     } catch (e) {
-      print('Error caching reminders for page $page: $e');
+      _safeShowMessage('Error caching reminders for page $page: $e');
     }
   }
 
@@ -1712,16 +1783,16 @@ class RemindersNotifier extends ChangeNotifier {
               .map((r) => Reminder.fromJson(r as Map<String, dynamic>))
               .where((r) => r.id != 0)
               .toList();
-          print('Loaded ${reminders.length} reminders from page $page');
+          _safeShowMessage('Loaded ${reminders.length} reminders from page $page');
           return reminders;
         } catch (parseError) {
-          print('Error parsing page $page data: $parseError');
+          _safeShowMessage('Error parsing page $page data: $parseError');
           await prefs.remove(key);
           return [];
         }
       }
     } catch (e) {
-      print('Error loading cached reminders for page $page: $e');
+      _safeShowMessage('Error loading cached reminders for page $page: $e');
     }
     return [];
   }
@@ -1740,23 +1811,65 @@ class RemindersNotifier extends ChangeNotifier {
       _currentPage = 1;
       notifyListeners();
     } catch (e) {
-      print('Error clearing session cache: $e');
+      _safeShowMessage('Error clearing session cache: $e');
     }
   }
 
  /// معالجة رسائل FCM القادمة من FcmService
-Future<void> handleFcmMessage(Map<String, dynamic> data) async {
+Future<void> handleFcmData(Map<String, dynamic> data) async {
+  // ⚠️ أول شيء - عرض SnackBar للتأكد من وصول الكود (قبل try)
+  globals.showGlobalSnackBar(
+    '🚨 handleFcmData CALLED!',
+    backgroundColor: Colors.red,
+    clearPrevious: true,
+  );
+  
+  // عرض SnackBar ثاني للتأكد من استمرار التنفيذ
+  globals.showGlobalSnackBar(
+    '🔵 البيانات: ${data.keys.toList()}',
+    backgroundColor: Colors.indigo,
+    clearPrevious: true,
+  );
+  
   try {
-    print('Processing FCM message with data: $data');
-    
+    // SnackBar داخل try مباشرة
+    globals.showGlobalSnackBar(
+      '✅ دخلنا try بنجاح!',
+      backgroundColor: Colors.green,
+      clearPrevious: true,
+    );
     // استخراج البيانات من الرسالة
-    final String action = data['action']?.toString().trim() ?? '';
+    String action = data['action']?.toString().trim() ?? '';
     final String postId = data['post_id']?.toString() ?? '';
     final String postTitle = data['post_title']?.toString() ?? '';
     final String nextReminderTime = data['next_reminder_time']?.toString() ?? '';
     
-    if (action.isEmpty || postId.isEmpty) {
-      print('Incomplete message data: action=$action, postId=$postId');
+    // عرض البيانات المستخرجة
+    globals.showGlobalSnackBar(
+      '� FCM: action=$action, postId=$postId',
+      backgroundColor: Colors.blue,
+      clearPrevious: false,
+    );
+    
+    // إذا كانت action فارغة، نحاول استنتاجها
+    if (action.isEmpty) {
+      action = data['operation']?.toString().trim() ?? '';
+      if (action.isEmpty) {
+        action = 'update';
+        globals.showGlobalSnackBar(
+          '🟠 action فارغ، استخدام: $action',
+          backgroundColor: Colors.orange,
+          clearPrevious: false,
+        );
+      }
+    }
+    
+    if (postId.isEmpty) {
+      globals.showGlobalSnackBar(
+        '⚠️ postId فارغ - تجاهل الرسالة',
+        backgroundColor: Colors.orange,
+        clearPrevious: false,
+      );
       return;
     }
     
@@ -1764,41 +1877,93 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
     try {
       reminderId = int.parse(postId);
     } catch (e) {
-      print('Error parsing post_id to number: $e');
+      globals.showGlobalSnackBar(
+        '❌ خطأ في تحويل postId: $e',
+        backgroundColor: Colors.red,
+        clearPrevious: false,
+      );
       return;
     }
     
-    print('Processing FCM for reminder $reminderId - operation type: $action');
+    // عرض معلومات المعالجة
+    globals.showGlobalSnackBar(
+      '🔄 معالجة: ID=$reminderId, action=$action',
+      backgroundColor: Colors.cyan,
+      clearPrevious: false,
+    );
     
     // التحقق مما إذا كان التذكير موجودًا محليًا
     bool existsLocally = _readReminders.any((r) => r.id == reminderId) ||
                          _unreadReminders.any((r) => r.id == reminderId);
     
+    globals.showGlobalSnackBar(
+      '📍 موجود محلياً: $existsLocally',
+      backgroundColor: Colors.purple,
+      clearPrevious: false,
+    );
+    
     switch (action.toLowerCase().trim()) {
       case 'reminder_updated':
       case 'update':
+        globals.showGlobalSnackBar(
+          '� SWITCH: update - بدء المعالجة',
+          backgroundColor: Colors.teal,
+          clearPrevious: false,
+        );
         if (existsLocally) {
           await handleUpdateFromFcm(reminderId);
         } else {
           await handleNewReminderFromFcm(reminderId);
         }
+        globals.showGlobalSnackBar(
+          '✅ update: اكتمل!',
+          backgroundColor: Colors.green,
+          clearPrevious: false,
+        );
         break;
+        
       case 'reschedule':
+        globals.showGlobalSnackBar(
+          '� SWITCH: reschedule - بدء المعالجة',
+          backgroundColor: Colors.teal,
+          clearPrevious: false,
+        );
         if (existsLocally) {
           await handleRescheduleFromFcm(reminderId);
         } else {
           await handleNewReminderFromFcm(reminderId);
         }
+        globals.showGlobalSnackBar(
+          '✅ reschedule: اكتمل!',
+          backgroundColor: Colors.green,
+          clearPrevious: false,
+        );
         break;
+        
       case 'new':
+        globals.showGlobalSnackBar(
+          '🆕 SWITCH: new - بدء المعالجة',
+          backgroundColor: Colors.teal,
+          clearPrevious: false,
+        );
         await handleNewReminderFromFcm(reminderId);
+        globals.showGlobalSnackBar(
+          '✅ new: اكتمل! Title: $postTitle',
+          backgroundColor: Colors.green,
+          clearPrevious: false,
+        );
         break;
+        
       case 'markas_read':
       case 'mark_as_read':
+        globals.showGlobalSnackBar(
+          '✅ SWITCH: mark_as_read - بدء المعالجة',
+          backgroundColor: Colors.teal,
+          clearPrevious: false,
+        );
         if (existsLocally) {
           await handleMarkAsReadFromFcm(reminderId);
         } else {
-          // إذا لم يكن التذكير موجودًا محليًا، حاول جلبه من الخادم
           try {
             final reminder = await _apiService.getReminderById(reminderId);
             if (reminder.id == reminderId && reminder.isOpened == 1) {
@@ -1806,29 +1971,81 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
               _readReminders.sort((a, b) => b.id.compareTo(a.id));
               await _updateCachedReminderFixed(reminder);
               notifyListeners();
-              print('Added read reminder $reminderId from server');
             }
           } catch (e) {
-            print('Error fetching reminder from server: $e');
+            globals.showGlobalSnackBar(
+              '❌ خطأ جلب التذكير: $e',
+              backgroundColor: Colors.red,
+              clearPrevious: false,
+            );
           }
         }
+        globals.showGlobalSnackBar(
+          '✅ mark_as_read: اكتمل!',
+          backgroundColor: Colors.green,
+          clearPrevious: false,
+        );
         break;
+        
       case 'delete':
+        globals.showGlobalSnackBar(
+          '🗑️ SWITCH: delete - بدء المعالجة',
+          backgroundColor: Colors.teal,
+          clearPrevious: false,
+        );
         if (existsLocally) {
           await deleteReminderComprehensive(reminderId);
         }
+        globals.showGlobalSnackBar(
+          '✅ delete: اكتمل!',
+          backgroundColor: Colors.green,
+          clearPrevious: false,
+        );
         break;
+        
       default:
-        print('Unsupported operation type: $action');
+        globals.showGlobalSnackBar(
+          '⚠️ action غير مدعوم: $action',
+          backgroundColor: Colors.orange,
+          clearPrevious: false,
+        );
     }
-  } catch (e) {
-    print('Error processing FCM message: $e');
+    
+    // رسالة الاكتمال النهائية
+    globals.showGlobalSnackBar(
+      '🎉 FCM اكتمل! ID=$reminderId',
+      backgroundColor: Colors.green,
+      duration: const Duration(seconds: 4),
+      clearPrevious: false,
+    );
+    
+  } catch (e, stackTrace) {
+    // عرض الخطأ بشكل واضح
+    globals.showGlobalSnackBar(
+      '❌ خطأ FCM: ${e.runtimeType}',
+      backgroundColor: Colors.red,
+      clearPrevious: false,
+      duration: const Duration(seconds: 5),
+    );
+    
+    // عرض تفاصيل الخطأ
+    globals.showGlobalSnackBar(
+      '📛 التفاصيل: $e',
+      backgroundColor: Colors.red.shade900,
+      clearPrevious: false,
+      duration: const Duration(seconds: 5),
+    );
+    
+    // طباعة stack trace في console
+    debugPrint('❌❌❌ handleFcmData ERROR: $e');
+    debugPrint('Stack trace: $stackTrace');
   }
 }
 
   Future<void> handleRescheduleFromFcm(int reminderId) async {
     try {
-      print('Processing reschedule of reminder from FCM: $reminderId');
+      _safeShowMessage('🟢 [handleRescheduleFromFcm] === STARTED for reminder $reminderId ===');
+      _safeShowMessage('Processing reschedule of reminder from FCM: $reminderId', isImportant: true, color: Colors.cyan);
       final updatedReminder = await _apiService.getReminderById(reminderId);
 
       if (updatedReminder.id == reminderId) {
@@ -1850,27 +2067,53 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
           }
           await _updateCachedReminderFixed(updatedReminder);
           notifyListeners();
-          print('Rescheduled reminder $reminderId successfully from FCM');
+          _safeShowMessage('🟢 [handleRescheduleFromFcm] === COMPLETED successfully for reminder $reminderId ===');
+          _safeShowMessage('Rescheduled reminder $reminderId successfully from FCM', isImportant: true, color: Colors.green);
         } else {
-          print('Reminder $reminderId not found in local lists');
+          _safeShowMessage('🔴 [handleRescheduleFromFcm] Reminder $reminderId not found in local lists');
+          _safeShowMessage('Reminder $reminderId not found in local lists', isImportant: true, color: Colors.orange);
         }
       } else {
-        print('Failed to fetch rescheduled reminder $reminderId from server');
+        _safeShowMessage('🔴 [handleRescheduleFromFcm] Failed to fetch reminder $reminderId from server');
+        _safeShowMessage('Failed to fetch rescheduled reminder $reminderId from server', isImportant: true, color: Colors.red);
       }
     } catch (e) {
-      print('Error processing reschedule from FCM: $e');
+      _safeShowMessage('🔴 [handleRescheduleFromFcm] === ERROR for reminder $reminderId: $e ===');
+      _safeShowMessage('Error processing reschedule from FCM: $e', isImportant: true, color: Colors.red);
     }
   }
 
   Future<void> handleNewReminderFromFcm(int reminderId) async {
-    try {
-      print('Processing new reminder from FCM: $reminderId');
-
+    globals.showGlobalSnackBar(
+      '🆕 handleNewReminderFromFcm بدأت: ID=$reminderId',
+      backgroundColor: Colors.cyan,
+      clearPrevious: false,
+    );
+    
+  try {
       bool exists = _readReminders.any((r) => r.id == reminderId) ||
           _unreadReminders.any((r) => r.id == reminderId);
 
+      globals.showGlobalSnackBar(
+        '📍 موجود مسبقاً: $exists',
+        backgroundColor: exists ? Colors.orange : Colors.green,
+        clearPrevious: false,
+      );
+
       if (!exists) {
+        globals.showGlobalSnackBar(
+          '📥 جاري جلب التذكير من السيرفر...',
+          backgroundColor: Colors.blue,
+          clearPrevious: false,
+        );
+        
         final newReminder = await _apiService.getReminderById(reminderId);
+
+        globals.showGlobalSnackBar(
+          '✅ تم جلب التذكير: ${newReminder.id}',
+          backgroundColor: Colors.green,
+          clearPrevious: false,
+        );
 
         if (newReminder.id == reminderId) {
           final targetList =
@@ -1883,26 +2126,42 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
           }
 
           await _updateCachedReminderFixed(newReminder);
-
           _totalReminders++;
-
           notifyListeners();
-          print('Added new reminder $reminderId successfully from FCM');
+          
+          globals.showGlobalSnackBar(
+            '🎉 تمت إضافة التذكير بنجاح!',
+            backgroundColor: Colors.green,
+            clearPrevious: false,
+          );
         } else {
-          print('Failed to fetch new reminder $reminderId from server');
+          globals.showGlobalSnackBar(
+            '❌ فشل جلب التذكير',
+            backgroundColor: Colors.red,
+            clearPrevious: false,
+          );
         }
-      } else {
-        print('Reminder $reminderId already exists in local lists');
+    } else {
+        globals.showGlobalSnackBar(
+          '🔄 التذكير موجود، جاري التحديث...',
+          backgroundColor: Colors.orange,
+          clearPrevious: false,
+        );
         await handleUpdateFromFcm(reminderId);
       }
     } catch (e) {
-      print('Error processing new reminder from FCM: $e');
+      globals.showGlobalSnackBar(
+        '❌ خطأ handleNewReminderFromFcm: $e',
+        backgroundColor: Colors.red,
+        clearPrevious: false,
+      );
     }
   }
 
   Future<void> handleMarkAsReadFromFcm(int reminderId) async {
-    try {
-      print('Processing mark as read from FCM: $reminderId');
+  try {
+    _safeShowMessage('🟢 [handleMarkAsReadFromFcm] === STARTED for reminder $reminderId ===');
+    _safeShowMessage('Processing mark as read from FCM: $reminderId', isImportant: true, color: Colors.cyan);
 
       final reminderIndex =
           _unreadReminders.indexWhere((r) => r.id == reminderId);
@@ -1925,9 +2184,11 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
         await _updateCachedReminderFixed(updatedReminder);
 
         notifyListeners();
-        print('Marked reminder $reminderId as read from FCM');
+        _safeShowMessage('🟢 [handleMarkAsReadFromFcm] === COMPLETED successfully for reminder $reminderId ===');
+        _safeShowMessage('Marked reminder $reminderId as read from FCM', isImportant: true, color: Colors.green);
       } else {
-        print('Reminder $reminderId not found in unread list');
+        _safeShowMessage('🔴 [handleMarkAsReadFromFcm] Reminder $reminderId not found in unread list');
+        _safeShowMessage('Reminder $reminderId not found in unread list', isImportant: true, color: Colors.orange);
 
         try {
           final reminder = await _apiService.getReminderById(reminderId);
@@ -1938,15 +2199,18 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
               _readReminders.sort((a, b) => b.id.compareTo(a.id));
               await _updateCachedReminderFixed(reminder);
               notifyListeners();
-              print('Added read reminder $reminderId from server');
+              _safeShowMessage('🟢 [handleMarkAsReadFromFcm] Reminder fetched from server successfully');
+              _safeShowMessage('Added read reminder $reminderId from server', isImportant: true, color: Colors.green);
             }
           }
         } catch (e) {
-          print('Error fetching reminder from server: $e');
+          _safeShowMessage('🔴 [handleMarkAsReadFromFcm] Error fetching reminder from server: $e');
+          _safeShowMessage('Error fetching reminder from server: $e', isImportant: true, color: Colors.red);
         }
       }
-    } catch (e) {
-      print('Error processing mark as read from FCM: $e');
+  } catch (e) {
+    _safeShowMessage('🔴 [handleMarkAsReadFromFcm] === ERROR for reminder $reminderId: $e ===');
+    _safeShowMessage('Error processing mark as read from FCM: $e', isImportant: true, color: Colors.red);
     }
   }
 
@@ -1957,7 +2221,7 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
       final reminderId = reminder.id;
 
       if (reminderId == 0) {
-        print('Invalid reminder ID');
+        _safeShowMessage('Invalid reminder ID');
         return;
       }
 
@@ -1977,9 +2241,9 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
       await _updateCachedReminderFixed(reminder);
 
       notifyListeners();
-      print('Updated reminder $reminderId from server data');
+      _safeShowMessage('Updated reminder $reminderId from server data');
     } catch (e) {
-      print('Error updating reminder from server data: $e');
+      _safeShowMessage('Error updating reminder from server data: $e');
     }
   }
 
@@ -1990,10 +2254,10 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
         final reminderData = response['reminder'] as Map<String, dynamic>;
         await updateReminderFromServerData(reminderData);
       } else {
-        print('Failed to get reminder from server: ${response['message']}');
+        _safeShowMessage('Failed to get reminder from server: ${response['message']}');
       }
     } catch (e) {
-      print('Error processing getReminderById response: $e');
+      _safeShowMessage('Error processing getReminderById response: $e');
     }
   }
 
@@ -2013,14 +2277,14 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
         }
       }
     } catch (e) {
-      print('خطأ في إزالة التذكير من التخزين المؤقت: $e');
+      _safeShowMessage('خطأ في إزالة التذكير من التخزين المؤقت: $e');
     }
   }
 
   // ===== الحل الرابع: إضافة دالة للحفظ الفوري =====
   Future<void> forceSaveCurrentState() async {
     try {
-      print('🔄 حفظ فوري للحالة الحالية...');
+      _safeShowMessage('🔄 حفظ فوري للحالة الحالية...');
 
       // حفظ جميع التذكيرات الحالية في الصفحة الأولى
       final allCurrentReminders = [..._readReminders, ..._unreadReminders];
@@ -2032,15 +2296,15 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
         await prefs.setInt(_totalKey, _totalReminders);
       }
 
-      print('✅ تم الحفظ الفوري للحالة');
+      _safeShowMessage('✅ تم الحفظ الفوري للحالة');
     } catch (e) {
-      print('❌ خطأ في الحفظ الفوري: $e');
+      _safeShowMessage('❌ خطأ في الحفظ الفوري: $e');
     }
   }
 
   /// تهيئة النظام للعمل بدون إنترنت
   Future<void> initializeOfflineMode() async {
-    print('🔄 تهيئة النظام للعمل بدون إنترنت...');
+    _safeShowMessage('🔄 تهيئة النظام للعمل بدون إنترنت...');
 
     try {
       _setLoading(true);
@@ -2052,9 +2316,9 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
       await _scheduleOfflineNotifications();
 
       _isInitialized = true;
-      print('✅ تم تهيئة النظام للعمل بدون إنترنت بنجاح');
+      _safeShowMessage('✅ تم تهيئة النظام للعمل بدون إنترنت بنجاح');
     } catch (e) {
-      print('❌ خطأ في تهيئة النظام للعمل بدون إنترنت: $e');
+      _safeShowMessage('❌ خطأ في تهيئة النظام للعمل بدون إنترنت: $e');
       // حتى لو فشلت التهيئة، نحاول تحميل البيانات الأساسية
       await _loadBasicOfflineData();
     } finally {
@@ -2066,7 +2330,7 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
   /// تستخدم للتحديث الاستباقي عند الضغط على الإشعار.
   Future<void> markReminderAsReadLocally(int reminderId) async {
     try {
-      print('🔄 تحديث استباقي محلي للتذكير $reminderId...');
+      _safeShowMessage('🔄 تحديث استباقي محلي للتذكير $reminderId...');
 
       final reminderIndex =
           _unreadReminders.indexWhere((r) => r.id == reminderId);
@@ -2091,13 +2355,13 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
         // تحديث الواجهة فوراً
         notifyListeners();
 
-        print('✅ تم التحديث المحلي الاستباقي بنجاح للتذكير $reminderId.');
+        _safeShowMessage('✅ تم التحديث المحلي الاستباقي بنجاح للتذكير $reminderId.');
       } else {
-        print(
+        _safeShowMessage(
             '⚠️ لم يتم العثور على التذكير $reminderId في القائمة غير المقروءة للتحديث المحلي.');
       }
     } catch (e) {
-      print('❌ خطأ في التحديث المحلي للتذكير $reminderId: $e');
+      _safeShowMessage('❌ خطأ في التحديث المحلي للتذكير $reminderId: $e');
     }
   }
 
@@ -2106,7 +2370,7 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      print('📁 تحميل البيانات المخزنة محلياً...');
+      _safeShowMessage('📁 تحميل البيانات المخزنة محلياً...');
 
       // تحميل التذكيرات من جميع الصفحات المخزنة
       List<Reminder> allCachedReminders = [];
@@ -2141,12 +2405,12 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
           _unreadReminders.sort((a, b) => b.id.compareTo(a.id));
         }
 
-        print(
+        _safeShowMessage(
             '✅ تم تحميل ${allCachedReminders.length} تذكير من التخزين المحلي');
-        print('   - مقروءة: ${_readReminders.length}');
-        print('   - غير مقروءة: ${_unreadReminders.length}');
+        _safeShowMessage('   - مقروءة: ${_readReminders.length}');
+        _safeShowMessage('   - غير مقروءة: ${_unreadReminders.length}');
       } else {
-        print('⚠️ لا توجد تذكيرات مخزنة محلياً');
+        _safeShowMessage('⚠️ لا توجد تذكيرات مخزنة محلياً');
       }
 
       // تحميل الفلاتر المخزنة
@@ -2158,7 +2422,7 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
 
       notifyListeners();
     } catch (e) {
-      print('❌ خطأ في تحميل البيانات المخزنة محلياً: $e');
+      _safeShowMessage('❌ خطأ في تحميل البيانات المخزنة محلياً: $e');
       rethrow;
     }
   }
@@ -2166,7 +2430,7 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
   /// جدولة الإشعارات للتذكيرات المحلية (بدون إنترنت)
   Future<void> _scheduleOfflineNotifications() async {
     try {
-      print('📅 جدولة الإشعارات للتذكيرات المحلية...');
+      _safeShowMessage('📅 جدولة الإشعارات للتذكيرات المحلية...');
 
       // إلغاء جميع الإشعارات الحالية أولاً
       await _notificationService.cancelAllNotifications();
@@ -2185,25 +2449,25 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
               await _scheduleReminderNotifications(reminder);
               scheduledCount++;
             } else {
-              print('تم تخطي التذكير ${reminder.id} - الموعد في الماضي');
+              _safeShowMessage('تم تخطي التذكير ${reminder.id} - الموعد في الماضي');
             }
           }
         } catch (e) {
-          print('خطأ في جدولة إشعار التذكير ${reminder.id}: $e');
+          _safeShowMessage('خطأ في جدولة إشعار التذكير ${reminder.id}: $e');
           continue;
         }
       }
 
-      print('✅ تم جدولة $scheduledCount إشعار تذكير للوضع بدون إنترنت');
+      _safeShowMessage('✅ تم جدولة $scheduledCount إشعار تذكير للوضع بدون إنترنت');
     } catch (e) {
-      print('❌ خطأ في جدولة الإشعارات للوضع بدون إنترنت: $e');
+      _safeShowMessage('❌ خطأ في جدولة الإشعارات للوضع بدون إنترنت: $e');
     }
   }
 
   /// تحميل البيانات الأساسية في حالة فشل التحميل الكامل
   Future<void> _loadBasicOfflineData() async {
     try {
-      print('📋 تحميل البيانات الأساسية للوضع بدون إنترنت...');
+      _safeShowMessage('📋 تحميل البيانات الأساسية للوضع بدون إنترنت...');
 
       final prefs = await SharedPreferences.getInstance();
 
@@ -2223,7 +2487,7 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
           _totalReminders = firstPageReminders.length;
         }
       } catch (e) {
-        print('لا توجد تذكيرات محلية متاحة: $e');
+        _safeShowMessage('لا توجد تذكيرات محلية متاحة: $e');
         _readReminders = [];
         _unreadReminders = [];
         _totalReminders = 0;
@@ -2232,9 +2496,9 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
       _currentPage = 1;
       notifyListeners();
 
-      print('✅ تم تحميل البيانات الأساسية للوضع بدون إنترنت');
+      _safeShowMessage('✅ تم تحميل البيانات الأساسية للوضع بدون إنترنت');
     } catch (e) {
-      print('❌ خطأ في تحميل البيانات الأساسية: $e');
+      _safeShowMessage('❌ خطأ في تحميل البيانات الأساسية: $e');
     }
   }
 
@@ -2297,14 +2561,14 @@ Future<void> handleFcmMessage(Map<String, dynamic> data) async {
           final List<dynamic> remindersList = jsonDecode(cachedData);
           return remindersList.isNotEmpty;
         } catch (e) {
-          print('خطأ في قراءة البيانات المحلية: $e');
+          _safeShowMessage('خطأ في قراءة البيانات المحلية: $e');
           return false;
         }
       }
 
       return false;
     } catch (e) {
-      print('خطأ في فحص البيانات المحلية: $e');
+      _safeShowMessage('خطأ في فحص البيانات المحلية: $e');
       return false;
     }
   }

@@ -64,6 +64,8 @@ class UtilsService {
     if (responseData is Map<String, dynamic> &&
         responseData['success'] == false &&
         responseData['message'] == 'no_valid_subscription') {
+      print('🚨 Server returned: no_valid_subscription');
+      print('📍 Endpoint: $endpoint | Method: $method');
       await handleNoValidSubscription();
       throw NoValidSubscriptionException('No valid subscription');
     }
@@ -83,6 +85,9 @@ class UtilsService {
   // Handle subscription expiration
   Future<void> handleNoValidSubscription() async {
     try {
+      print('⚠️ ========== NO VALID SUBSCRIPTION DETECTED ==========');
+      print('📤 Initiating complete logout and cleanup process');
+      
       final navigator = navigatorKey.currentState;
 
       if (navigator != null && navigator.mounted) {
@@ -97,24 +102,34 @@ class UtilsService {
           ),
         );
 
+        print('🔄 Calling AuthenticationService.logout() for comprehensive cleanup');
+        print('   → This will: Reset RevenueCat, Cancel notifications, Clear cache, Sign out');
+        
         final authService = AuthenticationService(context);
         await authService.logout();
+        
+        print('✅ Complete logout finished - User redirected to auth screen');
+        print('========== SUBSCRIPTION EXPIRY LOGOUT COMPLETE ==========');
       } else {
-        print('⚠️ Navigator not available, forcing navigation');
+        print('⚠️ Navigator not available, forcing navigation via PostFrameCallback');
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (navigatorKey.currentState != null) {
+            print('🔄 Executing fallback navigation to /auth');
             navigatorKey.currentState!
                 .pushNamedAndRemoveUntil('/auth', (_) => false);
+            print('✅ Fallback navigation complete');
           }
         });
       }
     } catch (e) {
-      print('Critical logout error: $e');
+      print('❌ Critical error in handleNoValidSubscription: $e');
       try {
+        print('🚨 Attempting emergency navigation to /auth');
         navigatorKey.currentState
             ?.pushNamedAndRemoveUntil('/auth', (_) => false);
+        print('✅ Emergency navigation successful');
       } catch (navError) {
-        print('Final navigation attempt failed: $navError');
+        print('❌ Final navigation attempt failed: $navError');
       }
     }
   }

@@ -338,7 +338,7 @@ class AuthProvider with ChangeNotifier {
           await setUserId(userData['user']['id']);
           _isAuthenticated = true;
           _isOfflineMode = false;
-          await FcmService().sendFcmTokenToBackend();
+          await FcmService.instance.sendFcmTokenToBackend();
           _safeShowMessage('✅ Login successful, Activated: $_isActivated');
           return {'success': true, 'activated': true, 'userData': userData};
         } else {
@@ -568,7 +568,7 @@ try {
 
           // إرسال FCM token
           try {
-            await FcmService().sendFcmTokenToBackend();
+            await FcmService.instance.sendFcmTokenToBackend();
           } catch (e) {
             _safeShowMessage('FCM token send failed: $e');
           }
@@ -829,7 +829,7 @@ try {
         _pendingVerificationEmail = null;
         _isActivated = true;
         _isAuthenticated = true;
-        await FcmService().sendFcmTokenToBackend();
+        await FcmService.instance.sendFcmTokenToBackend();
         _safeShowMessage('✅ Email verified successfully for $email');
         return {'success': true};
       } else {

@@ -16,7 +16,7 @@ class BootReceiver : BroadcastReceiver() {
         private const val TAG = "BootReceiver"
         private const val PREFS_NAME = "FlutterSharedPreferences"
         private const val SCHEDULED_REMINDERS_KEY = "flutter.scheduled_reminders"
-        private const val FCM_DATA_KEY = "flutter.fcm_data"
+
         const val ALARM_ACTION = "ALARM_ACTION" // إضافة هذا الثابت
     }
 
@@ -33,8 +33,6 @@ class BootReceiver : BroadcastReceiver() {
             Intent.ACTION_MY_PACKAGE_REPLACED -> {
                 Log.d(TAG, "🔄 Device booted or app updated - rescheduling alarms")
                 rescheduleAlarms(context)
-                restoreFcmData(context)
-                startForegroundService(context)
             }
             else -> {
                 Log.d(TAG, "⚠️ Unknown action, ignoring: ${intent.action}")
@@ -113,49 +111,7 @@ class BootReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun restoreFcmData(context: Context) {
-        try {
-            Log.d(TAG, "📋 Restoring FCM data from SharedPreferences...")
-            
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val fcmDataJson = prefs.getString(FCM_DATA_KEY, null)
-            
-            if (fcmDataJson.isNullOrEmpty()) {
-                Log.d(TAG, "⚠️ No FCM data found in SharedPreferences")
-                return
-            }
-            
-            // إرسال البيانات إلى Flutter
-            val intent = Intent("FCM_DATA_RESTORED").apply {
-                setPackage(context.packageName)
-                putExtra("fcm_data", fcmDataJson)
-            }
-            context.sendBroadcast(intent)
-            
-            Log.d(TAG, "✅ FCM data restored and sent to Flutter")
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error restoring FCM data: ${e.message}", e)
-        }
-    }
 
-    private fun startForegroundService(context: Context) {
-        try {
-            Log.d(TAG, "🚀 Starting FCM Foreground Service...")
-            
-            val serviceIntent = Intent(context, FCMForegroundService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent)
-            } else {
-                context.startService(serviceIntent)
-            }
-            
-            Log.d(TAG, "✅ FCM Foreground Service started")
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error starting foreground service: ${e.message}", e)
-        }
-    }
 
     private fun scheduleAlarm(
         context: Context,

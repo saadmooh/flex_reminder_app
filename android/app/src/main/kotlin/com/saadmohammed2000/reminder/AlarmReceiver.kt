@@ -12,7 +12,7 @@ import android.app.PendingIntent
 import android.media.RingtoneManager
 import android.os.PowerManager
 import android.media.AudioAttributes
-import org.json.JSONObject
+
 
 class AlarmReceiver : BroadcastReceiver() {
     

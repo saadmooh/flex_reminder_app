@@ -55,12 +55,12 @@ class AuthenticationService {
     _debugLog('Starting logout process');
 
     try {
-      // 1. إعادة تعيين RevenueCat قبل باقي عمليات تسجيل الخروج
+      // 1. تسجيل الخروج من RevenueCat فقط (بدون reset كامل)
       try {
-        await RevenueCatService.instance.reset();
-        _debugLog('RevenueCat service reset completed');
+        await RevenueCatService.instance.logoutUser();
+        _debugLog('RevenueCat user logged out successfully');
       } catch (e) {
-        _debugLog('RevenueCat reset failed (continuing with logout): $e');
+        _debugLog('RevenueCat logout failed (continuing): $e');
       }
 
       // 2. إلغاء جميع الإشعارات
@@ -147,52 +147,31 @@ class AuthenticationService {
     _debugLog('Starting post-auth flow for user: $userId');
 
     try {
-      final hasInternet =
-          await ConnectivityHelper.checkInternetConnection(verbose: true);
+      // تسجيل الدخول في RevenueCat (التهيئة الأولية تمت في main.dart)
+      await RevenueCatService.instance.loginUser(userId.toString());
 
-      if (hasInternet) {
-        _debugLog('Internet available, initializing RevenueCat');
+      final hasInternet = await ConnectivityHelper.checkInternetConnection(verbose: false);
 
-        try {
-          // تهيئة RevenueCat مع userId الجديد - هذا سيتعامل مع تغيير المستخدم تلقائياً
-          bool revenueCatInitialized = await RevenueCatService.instance
-              .initialize(userId: userId.toString());
-
-          if (revenueCatInitialized) {
-            _debugLog('RevenueCat initialization successful');
-          } else {
-            _debugLog('RevenueCat initialization failed, but continuing...');
-          }
-        } catch (e) {
-          _debugLog('RevenueCat initialization error: $e');
-        }
-
-        _debugLog('Checking subscription status...');
-        final subscriptionManager = SubscriptionManager(context);
-        final subscriptionResponse =
-            await subscriptionManager.checkSubscription();
-
-        _debugLog(
-            'Subscription check result: ${subscriptionResponse.toString()}');
-
-        if (subscriptionResponse['subscribed'] == true) {
-          _debugLog('User is subscribed, navigating to reminders');
-          NavigationService.navigateTo(context, '/reminders');
-        } else {
-          _debugLog('User not subscribed, showing paywall');
-          try {
-            NavigationService.navigateTo(context, '/subscription_management');
-          } catch (e) {
-            _debugLog('Paywall failed: $e');
-          }
-        }
-      } else {
-        _debugLog('No internet, navigating directly to reminders');
+      if (!hasInternet) {
+        _debugLog('No internet → going to reminders (offline mode)');
         NavigationService.navigateTo(context, '/reminders');
+        return;
+      }
+
+      // فحص حالة الاشتراك
+      final subscriptionManager = SubscriptionManager(context);
+      final subscriptionResponse = await subscriptionManager.checkSubscription();
+
+      if (subscriptionResponse['subscribed'] == true) {
+        _debugLog('User is subscribed → going to reminders');
+        NavigationService.navigateTo(context, '/reminders');
+      } else {
+        _debugLog('User NOT subscribed → showing paywall');
+        NavigationService.navigateTo(context, '/subscription_management');
       }
     } catch (e) {
       _debugLog('Error in post-auth flow: $e');
-      NavigationService.navigateTo(context, '/reminders');
+      NavigationService.navigateTo(context, '/reminders'); // fallback
     }
   }
 
@@ -294,9 +273,6 @@ class AuthenticationService {
         final userId = result['userData']?['user']?['id'];
         if (userId != null) {
           await _handlePostAuthFlow(userId);
-          // تهيئة RevenueCat مع userId فوراً بعد تسجيل الدخول الناجح
-          await RevenueCatService.instance
-              .initialize(userId: userId.toString());
         } else {
           _debugLog('Error: No user ID found in login response');
           _showErrorSnackBar('Authentication error: No user ID');

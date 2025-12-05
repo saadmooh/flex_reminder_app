@@ -27,6 +27,9 @@ class FcmService {
   // Factory constructor that returns the same instance
   factory FcmService() => instance;
 
+  // 🔍 FCM Debug Mode - Set to true for detailed logging
+  static bool debugMode = true;
+
   // إضافة متغيرات Rate Limiting
   DateTime? _lastSnackBarTime;
   final Duration _snackBarThrottle = const Duration(milliseconds: 500);
@@ -36,7 +39,7 @@ class FcmService {
 
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final _storage = const FlutterSecureStorage();
-  static bool _isFirebaseInitialized = false; 
+
   final NotificationService _notificationService = NotificationService();
   // متغيرات تتبع حالة التطبيق والرسائل
   static bool _isAppInForeground = true;
@@ -50,7 +53,7 @@ class FcmService {
   bool get isInitialized => _isInitialized;
 
   // Method channels for communication with native code
-  static const MethodChannel _fcmChannel = MethodChannel('com.saadmohammed2000.flex_reminder/fcm');
+
   static const MethodChannel _deeplinkChannel = MethodChannel('com.saadmohammed2000.flex_reminder/deeplink');
 
   // ✅ دالة محسّنة لعرض الرسائل
@@ -96,6 +99,103 @@ class FcmService {
   // ✅ استبدل _showSnackBar القديمة بهذه
   void _showSnackBar(String message, Color backgroundColor) {
     _safeShowMessage(message, color: backgroundColor, debugOnly: true); // فقط للـ debug
+  }
+
+  // 🔍 FCM Debug Logger - Detailed logging for troubleshooting
+  void _fcmDebugLog(String stage, String message, {Map<String, dynamic>? data}) {
+    if (!debugMode) return;
+    
+    final timestamp = DateTime.now().toIso8601String();
+    print('🔍 [$timestamp] FCM-$stage: $message');
+    if (data != null) {
+      try {
+        print('   📦 Data: ${jsonEncode(data)}');
+      } catch (e) {
+        print('   📦 Data: ${data.toString()}');
+      }
+    }
+  }
+
+  // 🏥 FCM Health Check - Diagnose FCM configuration and status
+  Future<void> performFCMHealthCheck() async {
+    print('\n🏥 ========== FCM HEALTH CHECK ==========');
+    
+    try {
+      final firebaseApps = Firebase.apps.length;
+      print('   ✓ Firebase Apps: $firebaseApps');
+      
+      final fcmInitialized = _isInitialized;
+      print('   ${fcmInitialized ? "✓" : "✗"} FCM Initialized: $fcmInitialized');
+      
+      final token = await getAccessToken();
+      print('   ${token != null ? "✓" : "✗"} FCM Token: ${token != null ? "${token.substring(0, 20)}..." : "null"}');
+      
+      final settings = await _firebaseMessaging.getNotificationSettings();
+      print('   ${settings.authorizationStatus == AuthorizationStatus.authorized ? "✓" : "✗"} Permission Status: ${settings.authorizationStatus}');
+      
+      print('   ✓ Permissions Granted: $_permissionsGranted');
+      print('   ✓ Debug Mode: $debugMode');
+      print('   ✓ Processed Messages Count: ${_processedMessages.length}');
+      
+      if (_processedMessages.isNotEmpty) {
+        print('   📋 Last 3 processed message IDs:');
+        _processedMessages.take(3).forEach((msgId) => print('      - $msgId'));
+      }
+      
+    } catch (e) {
+      print('   ✗ Health check error: $e');
+    }
+    
+    print('========================================\n');
+  }
+
+  // 🧪 Test FCM Flow - Simulate message processing
+  Future<void> testFCMFlow() async {
+    print('\n🧪 ========== FCM FLOW TEST ==========');
+    
+    try {
+      print('1. Checking Firebase initialization...');
+      print('   Result: ${Firebase.apps.isNotEmpty ? "✓ Initialized" : "✗ Not initialized"}');
+      
+      print('\n2. Checking FCM permissions...');
+      final settings = await _firebaseMessaging.getNotificationSettings();
+      print('   Authorization: ${settings.authorizationStatus}');
+      print('   Alert: ${settings.alert}');
+      print('   Badge: ${settings.badge}');
+      print('   Sound: ${settings.sound}');
+      
+      print('\n3. Getting FCM token...');
+      final token = await getAccessToken();
+      if (token != null && token.length > 20) {
+        print('   ✓ Token: ${token.substring(0, 20)}...');
+      } else {
+        print('   ✗ Token: $token');
+      }
+      
+      print('\n4. Checking handlers setup...');
+      print('   Initialized: $_isInitialized');
+      
+      print('\n5. Simulating test message...');
+      final testMessage = RemoteMessage(
+        messageId: 'test_${DateTime.now().millisecondsSinceEpoch}',
+        data: {
+          'post_id': '999',
+          'post_title': 'Test FCM Message',
+          'next_reminder_time': DateTime.now().toString(),
+          'action': 'test',
+        },
+      );
+      
+      print('   Processing test message...');
+      await processMessage(testMessage, isBackground: false);
+      print('   ✓ Test message processed');
+      
+    } catch (e, stack) {
+      print('   ✗ Test failed: $e');
+      print('   Stack: $stack');
+    }
+    
+    print('========== TEST COMPLETE ==========\n');
   }
 
   // ✅ تحديث requestAllPermissions لتقليل الرسائل
@@ -144,11 +244,9 @@ class FcmService {
     }
   }
 
-  // ✅ تحديث init() لتقليل الرسائل
   Future<Map<String, dynamic>> init() async {
-    
     if (_isInitialized) {
-      debugPrint('FCM already initialized');
+      debugPrint('✅ FCM already initialized');
       final fcmToken = await _storage.read(key: AppConstants.FCM_TOKEN_KEY);
       return {
         'fcmToken': fcmToken,
@@ -158,40 +256,60 @@ class FcmService {
     }
 
     try {
-      // طلب الأذونات
-      final permissionsGranted = await requestAllPermissions();
+      debugPrint('🔄 Starting FCM initialization...');
       
-      // الحصول على Token
-      final fcmToken = await getAccessToken();
-      if (fcmToken != null) {
-        await _storage.write(key: AppConstants.FCM_TOKEN_KEY, value: fcmToken);
-        debugPrint('✅ FCM Token obtained');
-      } else {
-        _safeShowMessage('فشل في الحصول على Token', color: Colors.red, force: true);
+      // التحقق من Firebase
+      if (Firebase.apps.isEmpty) {
+        debugPrint('❌ Firebase not initialized');
         return {
           'fcmToken': null,
-          'message': 'Token failed',
+          'message': 'Firebase not initialized',
           'permissionsGranted': false,
         };
       }
-    _isFirebaseInitialized = true; 
-      // إرسال Token للباك إند
-      await sendFcmTokenToBackend();
-
-      // الاشتراك في المواضيع
-      if (!kIsWeb) {
-        final userId = await _getUserId();
-        if (userId != null) {
-          await subscribeToTopic('user_$userId');
-        }
+      
+      // طلب الأذونات
+      final permissionsGranted = await requestAllPermissions();
+      if (!permissionsGranted) {
+        debugPrint('⚠️ Permissions not granted');
       }
-
+      
+      // الحصول على FCM Token
+      final fcmToken = await getAccessToken();
+      if (fcmToken != null && fcmToken.isNotEmpty) {
+        await _storage.write(key: AppConstants.FCM_TOKEN_KEY, value: fcmToken);
+        debugPrint('✅ FCM Token saved: ${fcmToken.substring(0, 20)}...');
+      } else {
+        debugPrint('⚠️ Failed to get FCM token');
+      }
+      
       // إعداد معالجات الرسائل
       await setupMessageHandlers();
       _setupAppLifecycleListener();
-      _setupMethodCallHandlers();
+      
+      // إرسال Token للباك إند (لا تفشل التهيئة إذا فشل)
+      try {
+        if (fcmToken != null) {
+          await sendFcmTokenToBackend();
+        }
+      } catch (e) {
+        debugPrint('⚠️ Failed to send token to backend: $e');
+      }
+
+      // الاشتراك في المواضيع
+      if (!kIsWeb) {
+        try {
+          final userId = await _getUserId();
+          if (userId != null) {
+            await subscribeToTopic('user_$userId');
+          }
+        } catch (e) {
+          debugPrint('⚠️ Failed to subscribe to topic: $e');
+        }
+      }
 
       _isInitialized = true;
+      // globals.isFirebaseInitialized = true; // Removed: property doesn't exist in globals.dart
       _safeShowMessage('✅ FCM جاهز', color: Colors.green, force: true);
 
       return {
@@ -199,9 +317,10 @@ class FcmService {
         'message': 'Success',
         'permissionsGranted': permissionsGranted,
       };
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ FCM init failed: $e');
-      _safeShowMessage('فشل تهيئة FCM', color: Colors.red, force: true);
+      debugPrint('Stack trace: $stackTrace');
+      _safeShowMessage('فشل تهيئة FCM: $e', color: Colors.red, force: true);
       return {
         'fcmToken': null,
         'message': 'Failed: $e',
@@ -212,19 +331,32 @@ class FcmService {
 
   // ✅ تحديث processMessage لتقليل الرسائل
   Future<void> processMessage(RemoteMessage message, {required bool isBackground}) async {
+      _fcmDebugLog('PROCESS', 'Starting message processing', data: {
+        'background': isBackground,
+        'messageId': message.messageId,
+        'dataKeys': message.data.keys.toList(),
+      });
       _safeShowMessage('🔄 Processing message (background: $isBackground)');
       
     try {
     
       if (!_isInitialized) {
+        _fcmDebugLog('PROCESS', 'FCM not initialized - attempting init');
         debugPrint('⚠️ FCM not initialized');
         await init();
       }
       
+      _fcmDebugLog('PROCESS', 'Extracting message data...');
       final data = Map<String, dynamic>.from(message.data);
       final title = data['title']?.toString() ?? data['post_title']?.toString() ?? 'تذكير';
       final body = data['body']?.toString() ?? data['next_reminder_time']?.toString() ?? '';
       final postId = data['post_id']?.toString() ?? '';
+      
+      _fcmDebugLog('PROCESS', 'Data extracted', data: {
+        'title': title,
+        'body': body,
+        'postId': postId,
+      });
       
       debugPrint('📋 Title: $title');
       debugPrint('📋 PostID: $postId');
@@ -232,33 +364,74 @@ class FcmService {
       final int? reminderId = postId.isNotEmpty ? int.tryParse(postId) : null;
       final msgId = message.messageId ?? 'msg_${DateTime.now().millisecondsSinceEpoch}';
       
+      _fcmDebugLog('PROCESS', 'Checking for duplicates...', data: {
+        'messageId': msgId,
+        'reminderId': reminderId,
+      });
+      
       // فحص التكرار
       if (_isDuplicateMessage(msgId)) {
+        _fcmDebugLog('PROCESS', 'DUPLICATE DETECTED - Skipping');
         debugPrint('⏭️ Duplicate ignored');
         return;
       }
 
+      _fcmDebugLog('PROCESS', 'Message is new - proceeding');
+
       // عرض إشعار في المقدمة فقط
       if (!isBackground && title.isNotEmpty) {
+        _fcmDebugLog('PROCESS', 'Showing foreground notification...');
         _showFcmNotificationSnackBar(title, body);
+        _fcmDebugLog('PROCESS', '✓ Notification shown');
       }
 
       // معالجة الإشعارات
       if (reminderId == null || reminderId <= 0) {
+        _fcmDebugLog('PROCESS', 'No valid reminder ID - handling as general notification');
         await _handleGeneralNotification(title, body, data, isBackground);
+        _fcmDebugLog('PROCESS', '✓ General notification handled');
         return;
       }
 
+      _fcmDebugLog('PROCESS', 'Checking if reminder should be processed...', data: {
+        'reminderId': reminderId,
+      });
+
       if (!_shouldProcessReminder(reminderId)) {
+        _fcmDebugLog('PROCESS', 'Reminder processing delayed (rate limit)');
         debugPrint('⏭️ Reminder delayed');
         return;
       }
 
       // معالجة التذكير
-      await _processReminderOperation(data['action']?.toString() ?? '', reminderId, isBackground, data);
+      String action = data['action']?.toString().trim() ?? '';
+      
+      // إذا كانت action فارغة، نحاول استنتاجها من البيانات
+      if (action.isEmpty) {
+        debugPrint('🟠 [processMessage] action is empty, inferring from data...');
+        // تحقق من وجود operation كبديل
+        action = data['operation']?.toString().trim() ?? '';
+        
+        // إذا لا يزال فارغًا، استخدم "update" كقيمة افتراضية
+        if (action.isEmpty) {
+          action = 'update';
+          debugPrint('🟠 [processMessage] Using default action: $action');
+        }
+      }
+      
+      _fcmDebugLog('PROCESS', 'Processing reminder operation...', data: {
+        'action': action,
+        'reminderId': reminderId,
+      });
+      
+      await _processReminderOperation(action, reminderId, isBackground, data);
+      
+      _fcmDebugLog('PROCESS', '✅ Message processing COMPLETE');
       debugPrint('✅ Message processed');
       
     } catch (e, s) {
+      _fcmDebugLog('PROCESS', '❌ EXCEPTION: $e');
+      print('🔴 Error: $e\n$s');
       debugPrint('❌ Process error: $e');
       // إشعار احتياطي
       try {
@@ -327,85 +500,9 @@ class FcmService {
     return true;
   }
 
-  void _setupMethodCallHandlers() {
-    _fcmChannel.setMethodCallHandler((call) async {
-      switch (call.method) {
-        case 'onFcmMessageReceived':
-          final Map<String, dynamic> arguments = call.arguments;
-          final action = arguments['action'] as String?;
-          final Map<String, String> data = Map<String, String>.from(arguments['data'] ?? {});
-          
-          _safeShowMessage('Received FCM message: $action', color: Colors.blue);
-          _showSnackBar('FCM Message: $action', Colors.blue);
-          
-          await _processNativeFcmMessage(action, data);
-          break;
-          
-        case 'onTokenRefresh':
-          final String? token = call.arguments;
-          if (token != null) {
-            _safeShowMessage('FCM token refreshed: $token', color: Colors.blue);
-            _showSnackBar('FCM Token Refreshed', Colors.blue);
-            await _storage.write(key: AppConstants.FCM_TOKEN_KEY, value: token);
-            await sendFcmTokenToBackend();
-          }
-          break;
-          
-        default:
-          throw PlatformException(
-            code: 'Unimplemented',
-            details: 'Method ${call.method} is not implemented',
-          );
-      }
-    });
+  // Native method channel handlers removed
 
-    _deeplinkChannel.setMethodCallHandler((call) async {
-      switch (call.method) {
-        case 'openReminderDetail':
-          final int reminderId = call.arguments;
-          _safeShowMessage('Opening reminder detail: $reminderId', color: Colors.blue);
-          _showSnackBar('Opening Reminder: $reminderId', Colors.blue);
-          
-          navigatorKey.currentState?.pushNamed(
-            '/reminder',
-            arguments: {'reminderId': reminderId},
-          );
-          break;
-          
-        default:
-          throw PlatformException(
-            code: 'Unimplemented',
-            details: 'Method ${call.method} is not implemented',
-          );
-      }
-    });
-  }
 
-  Future<void> _processNativeFcmMessage(String? action, Map<String, String> data) async {
-  try {
-    if (action == null) return;
-    
-    final postId = data['post_id'] ?? '';
-    final postTitle = data['post_title'] ?? '';
-    final nextReminderTime = data['next_reminder_time'] ?? '';
-    
-    final int? reminderId = postId.isNotEmpty ? int.tryParse(postId) : null;
-    
-    final title = postTitle.isNotEmpty ? postTitle : 'تذكير';
-    final body = "موعد التذكير التالي: $nextReminderTime";
-    
-    _showFcmNotificationSnackBar(title, body);
-    _showSnackBar('FCM: $title - $body', Colors.blue);
-    
-    // تحويل البيانات إلى Map<String, dynamic> واستدعاء handleFcmMessage
-    final Map<String, dynamic> messageData = Map<String, dynamic>.from(data);
-    messageData['action'] = action;
-    
-    await RemindersNotifier.instance.handleFcmMessage(messageData);
-  } catch (e) {
-    _safeShowMessage('Error processing FCM message: $e', color: Colors.red);
-  }
-}
 
   // ============================================================================
   // الحل 1: إضافة فحوصات أمان في processMessage
@@ -442,13 +539,26 @@ class FcmService {
   Future<void> _processReminderOperation(
     String action, int reminderId, bool isBackground, Map<String, dynamic> data) async {
   try {
+    debugPrint('🔵 [_processReminderOperation] === STARTED ===');
+    debugPrint('🔵 [_processReminderOperation] action="$action", reminderId=$reminderId, isBackground=$isBackground');
+    debugPrint('🔵 [_processReminderOperation] data keys: ${data.keys.toList()}');
+    debugPrint('🔵 [_processReminderOperation] full data: $data');
+    
     _safeShowMessage('🔄 Processing: $action for reminder: $reminderId', color: Colors.blue);
     
     // استدعاء RemindersNotifier لمعالجة رسالة FCM
-    await RemindersNotifier.instance.handleFcmMessage(data);
+    final Map<String, dynamic> fcmData = data;
+    
+    print('🔵🔵🔵 [_processReminderOperation] BEFORE calling handleFcmData');
+    debugPrint('🔵 [_processReminderOperation] Calling RemindersNotifier.handleFcmData...');
+    await RemindersNotifier.instance.handleFcmData(fcmData);
+    print('🔵🔵🔵 [_processReminderOperation] AFTER handleFcmData - Success!');
+    debugPrint('🔵 [_processReminderOperation] handleFcmData completed successfully');
     
     _safeShowMessage('✅ FCM message processed by RemindersNotifier', color: Colors.green);
   } catch (e, s) {
+    debugPrint('🔴 [_processReminderOperation] ERROR: $e');
+    debugPrint('🔴 [_processReminderOperation] Stack: $s');
     _safeShowMessage('❌ Error in _processReminderOperation: $e', color: Colors.red);
     print('❌ Error: $e\n$s');
     
@@ -627,43 +737,33 @@ class FcmService {
     }
   }
 
+  /// الحصول على FCM Token
   Future<String?> getAccessToken() async {
     try {
-      try {
-        final String? token = await _fcmChannel.invokeMethod('getFCMToken');
-        if (token != null && token.isNotEmpty) {
-          return token;
-        }
-      } catch (e) {
-        print('Error getting token from native code: $e');
-      }
+      debugPrint('🔑 Getting FCM token...');
       
       if (kIsWeb) {
-        return await _firebaseMessaging.getToken(
+        final token = await _firebaseMessaging.getToken(
           vapidKey: 'your-vapid-key-here',
         );
+        debugPrint('✅ Web FCM token obtained');
+        return token;
       }
-
-      final jsonString = await rootBundle.loadString(
-        AppConstants.SERVICE_ACCOUNT_PATH,
-      );
-
-      final accountCredentials =
-          auth.ServiceAccountCredentials.fromJson(jsonString);
-      final scopes = [AppConstants.FIREBASE_MESSAGING_SCOPE];
-      final client =
-          await auth.clientViaServiceAccount(accountCredentials, scopes);
-      _safeShowMessage(client.credentials.accessToken.data,
-          color: Colors.green);
-      return client.credentials.accessToken.data;
-    } catch (e) {
-      print('خطأ في الحصول على Access Token: $e');
-      try {
-        return await _firebaseMessaging.getToken();
-      } catch (fallbackError) {
-        print('خطأ في الحصول على التوكن البديل: $fallbackError');
+      
+      // للتطبيقات الأصلية (Android/iOS)
+      final token = await _firebaseMessaging.getToken();
+      
+      if (token != null && token.isNotEmpty) {
+        debugPrint('✅ FCM token obtained: ${token.substring(0, 20)}...');
+        return token;
+      } else {
+        debugPrint('⚠️ FCM token is null or empty');
         return null;
       }
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error getting FCM token: $e');
+      debugPrint('Stack trace: $stackTrace');
+      return null;
     }
   }
 
@@ -709,75 +809,110 @@ class FcmService {
 
   // ✅ نقل setupMessageHandlers إلى FcmService وجعلها public
 Future<void> setupMessageHandlers() async {
-  // if (!_isFirebaseInitialized) {
-  //   _safeShowMessage('⚠️ Skipping message handlers - Firebase not initialized', color: Colors.orange);
-  //   return;
-  // }
+    _fcmDebugLog('SETUP', 'Starting message handlers setup...');
+    
     if (Firebase.apps.isEmpty) {
     _safeShowMessage('⚠️ Skipping message handlers - Firebase app not active', color: Colors.orange);
+    _fcmDebugLog('SETUP', 'FAILED - Firebase not initialized');
     return;
   }
 
   try {
+    _fcmDebugLog('SETUP', 'Firebase apps found: ${Firebase.apps.length}');
+    
     // معالج المقدمة
+    _fcmDebugLog('SETUP', 'Registering onMessage listener...');
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-      _safeShowMessage('📨 FOREGROUND MESSAGE RECEIVED', color: Colors.blue);
+      _fcmDebugLog('FOREGROUND', '📨 MESSAGE RECEIVED', data: {
+        'messageId': message.messageId,
+        'sentTime': message.sentTime?.toString(),
+        'data': message.data,
+        'notification_title': message.notification?.title,
+        'notification_body': message.notification?.body,
+      });
       
       try {
+        _fcmDebugLog('FOREGROUND', 'Parsing message data...');
         final data = Map<String, dynamic>.from(message.data);
+        _fcmDebugLog('FOREGROUND', 'Data parsed successfully', data: data);
+        
         final postTitle = data['post_title']?.toString().trim() ?? '';
         final nextReminderTime = data['next_reminder_time']?.toString() ?? '';
         
         final title = postTitle.isNotEmpty ? postTitle : 'تذكير';
         final body = "موعد التذكير التالي: $nextReminderTime";
         
+        _fcmDebugLog('FOREGROUND', 'Extracted title: $title, body: $body');
+        
         if (title.isNotEmpty || body.isNotEmpty) {
+          _fcmDebugLog('FOREGROUND', 'Showing SnackBar notification...');
           _showFcmNotificationSnackBar(title, body);
+          _fcmDebugLog('FOREGROUND', 'SnackBar shown successfully');
         }
 
+        _fcmDebugLog('FOREGROUND', 'Starting message processing...');
         await processMessageSafe(message, isBackground: false);
         
+        _fcmDebugLog('FOREGROUND', '✅ Message processed successfully');
         _safeShowMessage('✅ Message processed successfully', color: Colors.green);
         
       } catch (e, stackTrace) {
+        _fcmDebugLog('FOREGROUND', '❌ ERROR: $e');
+        print('🔴 Error: $e\nStack: $stackTrace');
         _safeShowMessage('❌ Error processing message: $e', color: Colors.red);
-        print('Error: $e\nStack: $stackTrace');
       }
     }, onError: (error) {
+      _fcmDebugLog('FOREGROUND', '❌ Stream error: $error');
       _safeShowMessage('❌ Stream error: $error', color: Colors.red);
     });
 
+    _fcmDebugLog('SETUP', '✓ onMessage listener registered');
+
     // معالج فتح التطبيق من إشعار
+    _fcmDebugLog('SETUP', 'Registering onMessageOpenedApp listener...');
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      _fcmDebugLog('OPENED_APP', '📱 App opened from notification', data: message.data);
       _safeShowMessage('📱 App opened from notification', color: Colors.blue);
       
       try {
         _handleMessageOpenedAppNavigation(message);
+        _fcmDebugLog('OPENED_APP', '✓ Navigation handled');
       } catch (e) {
+        _fcmDebugLog('OPENED_APP', '❌ Error: $e');
         _safeShowMessage('❌ Error handling opened app: $e', color: Colors.red);
       }
     });
 
+    _fcmDebugLog('SETUP', '✓ onMessageOpenedApp listener registered');
+
     // معالج الرسالة الأولية
+    _fcmDebugLog('SETUP', 'Checking for initial message...');
     FirebaseMessaging.instance.getInitialMessage().then((initialMessage) {
       if (initialMessage != null) {
+        _fcmDebugLog('INITIAL', '📬 Initial message found', data: initialMessage.data);
         _safeShowMessage('📬 Initial message', color: Colors.blue);
         
         Future.delayed(const Duration(seconds: 2), () {
           try {
             _handleMessageOpenedAppNavigation(initialMessage);
+            _fcmDebugLog('INITIAL', '✓ Navigation handled');
           } catch (e) {
+            _fcmDebugLog('INITIAL', '❌ Error: $e');
             _safeShowMessage('❌ Error handling initial message: $e', color: Colors.red);
           }
         });
+      } else {
+        _fcmDebugLog('INITIAL', 'No initial message found');
       }
     });
 
+    _fcmDebugLog('SETUP', '✓ All listeners registered successfully');
     _safeShowMessage('✅ Message handlers configured', color: Colors.green);
     
   } catch (e, stackTrace) {
+    _fcmDebugLog('SETUP', '❌ Setup error: $e');
+    print('🔴 Error: $e\nStack: $stackTrace');
     _safeShowMessage('❌ Setup error: $e', color: Colors.red);
-    print('Error: $e\nStack: $stackTrace');
   }
 }
 
@@ -870,7 +1005,8 @@ Future<void> _handleForegroundMessage(RemoteMessage message) async {
     }
     
     // استدعاء handleFcmMessage من RemindersNotifier
-    await RemindersNotifier.instance.handleFcmMessage(data);
+    final Map<String, dynamic> fcmData = data;
+    await RemindersNotifier.instance.handleFcmData(fcmData);
     
   } catch (e, stackTrace) {
     _showSnackBar('❌ Error in foreground handler', Colors.red);
@@ -896,10 +1032,10 @@ Future<void> _handleMessageOpenedApp(RemoteMessage message) async {
     }
 
     // ✅ استخراج البيانات من data
-    final data = Map<String, dynamic>.from(message.data);
+    final Map<String, dynamic> data = Map<String, dynamic>.from(message.data);
     
     // استدعاء handleFcmMessage من RemindersNotifier
-    await RemindersNotifier.instance.handleFcmMessage(data);
+    await RemindersNotifier.instance.handleFcmData(data);
     
   } catch (e, stackTrace) {
     _showSnackBar('❌ Error handling app opened', Colors.red);

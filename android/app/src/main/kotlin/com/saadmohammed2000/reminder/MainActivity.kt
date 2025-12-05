@@ -3,7 +3,7 @@ package com.saadmohammed2000.flex_reminder
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
+
 import android.os.Bundle
 import android.util.Log
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -18,7 +18,6 @@ class MainActivity : FlutterFragmentActivity() {
     
     private val SHARED_DATA_CHANNEL = "app.channel.shared.data"
     private val ALARM_CHANNEL = "com.saadmohammed2000.flex_reminder/alarm"
-    private val FCM_CHANNEL = "com.saadmohammed2000.flex_reminder/fcm"
     private val DEEPLINK_CHANNEL = "com.saadmohammed2000.flex_reminder/deeplink"
     private var sharedText: String? = null
     
@@ -26,51 +25,6 @@ class MainActivity : FlutterFragmentActivity() {
         private const val TAG = "MainActivity"
         const val ALARM_ACTION = "ALARM_ACTION"
     }
-    
-    // BroadcastReceiver for FCM messages
-    private val fcmReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "FCM_MESSAGE_RECEIVED") {
-                val action = intent.getStringExtra("action")
-                val data = mutableMapOf<String, String>() // إصلاح: استخدام data بدلاً من dataMap
-                
-                // استخراج البيانات من الـ intent
-                intent.extras?.keySet()?.forEach { key ->
-                    if (key != "action") {
-                        val value = intent.getStringExtra(key)
-                        if (value != null) {
-                            data[key] = value
-                        }
-                    }
-                }
-                
-                // إرسال إلى Flutter
-                flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
-                    val channel = MethodChannel(messenger, FCM_CHANNEL)
-                    channel.invokeMethod("onFcmMessageReceived", mapOf(
-                        "action" to action,
-                        "data" to data
-                    ))
-                }
-            }
-        }
-    }
-    
-    // BroadcastReceiver for FCM token refresh
-    private val tokenRefreshReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "FCM_TOKEN_REFRESH") {
-                val token = intent.getStringExtra("token")
-                
-                // إرسال إلى Flutter
-                flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
-                    val channel = MethodChannel(messenger, FCM_CHANNEL)
-                    channel.invokeMethod("onTokenRefresh", token)
-                }
-            }
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "🚀 ========== APP STARTED ==========")
@@ -213,29 +167,6 @@ class MainActivity : FlutterFragmentActivity() {
                 
                 else -> {
                     Log.w(TAG, "⚠️ Unknown method: ${call.method}")
-                    result.notImplemented()
-                }
-            }
-        }
-        
-        // ==================== قناة FCM ====================
-        val fcmChannel = MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            FCM_CHANNEL
-        )
-        
-        fcmChannel.setMethodCallHandler { call, result ->
-            when (call.method) {
-                "getFCMToken" -> {
-                    try {
-                        val prefs = getSharedPreferences("fcm_prefs", Context.MODE_PRIVATE)
-                        val token = prefs.getString("fcm_token", null)
-                        result.success(token)
-                    } catch (e: Exception) {
-                        result.error("ERROR", e.message, null)
-                    }
-                }
-                else -> {
                     result.notImplemented()
                 }
             }
@@ -497,8 +428,6 @@ class MainActivity : FlutterFragmentActivity() {
         checkExactAlarmPermission()
         
         // تسجيل الـ receivers
-        registerReceiver(fcmReceiver, IntentFilter("FCM_MESSAGE_RECEIVED"))
-        registerReceiver(tokenRefreshReceiver, IntentFilter("FCM_TOKEN_REFRESH"))
     }
 
     override fun onPause() {
@@ -506,8 +435,6 @@ class MainActivity : FlutterFragmentActivity() {
         Log.d(TAG, "⏸️ App paused")
         
         // إلغاء تسجيل الـ receivers
-        unregisterReceiver(fcmReceiver)
-        unregisterReceiver(tokenRefreshReceiver)
     }
 
     override fun onNewIntent(intent: Intent) {

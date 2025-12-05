@@ -1,4 +1,5 @@
 import 'package:flex_reminder/globals.dart'; // للوصول إلى navigatorKey
+import 'package:flex_reminder/globals.dart' as globals;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -23,20 +24,11 @@ import 'package:flex_reminder/firebase_options.dart';
 import 'package:flex_reminder/providers/auth_provider.dart';
 import 'package:flex_reminder/providers/reminders_notifier.dart';
 import 'package:flex_reminder/services/notification_service.dart';
-import 'package:flex_reminder/services/fcm_service.dart';
+import 'package:flex_reminder/services/fcm_service.dart' hide RemindersNotifier;
 import 'package:flex_reminder/utils/connectivity_helper.dart';
 import 'dart:convert';
 
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
-    GlobalKey<ScaffoldMessengerState>();
-
-// متغيرات للتحكم في حالة التهيئة
-bool _isFirebaseInitialized = false;
-bool _isFcmInitialized = false;
-bool _isRevenueCatInitialized = false;
-String? _initializationError;
-
+// ✅ استخدام navigatorKey و scaffoldMessengerKey من globals.dart بدلاً من تعريفها مرتين
 
 // إنشاء instance مشترك للـ NotificationService
 late NotificationService _backgroundNotificationService;
@@ -92,6 +84,13 @@ Future<void> _initializeAndStartApp() async {
 
    
 
+    // ✅ تهيئة RemindersNotifier مع ربطه بـ AuthProvider
+    final remindersNotifier = RemindersNotifier.instance;
+    await remindersNotifier.initialize(authProvider: AuthProvider.instance);
+
+    // ✅ طباعة حالة جميع الخدمات
+    globals.printServicesStatus();
+
     // تشغيل التطبيق
     print('🎯 تشغيل التطبيق...');
     print('=' * 60);
@@ -102,14 +101,14 @@ Future<void> _initializeAndStartApp() async {
           ChangeNotifierProvider(create: (_) => LanguageManager()),
           ChangeNotifierProvider(create: (_) => AuthProvider.instance),
           ChangeNotifierProvider.value(
-            value: RemindersNotifier.instance..navigatorKey = navigatorKey,
+            value: remindersNotifier,
           ),
         ],
         child: MyApp(
-          isFirebaseInitialized: _isFirebaseInitialized,
-          isFcmInitialized: _isFcmInitialized,
-          isRevenueCatInitialized: _isRevenueCatInitialized,
-          initializationError: _initializationError,
+          isFirebaseInitialized: globals.isFirebaseInitialized,
+          isFcmInitialized: globals.isFcmInitialized,
+          isRevenueCatInitialized: globals.isRevenueCatInitialized,
+          initializationError: globals.initializationError,
         ),
       ),
     );
@@ -117,20 +116,28 @@ Future<void> _initializeAndStartApp() async {
     _safeShowMessage('خطأ في تهيئة التطبيق: $e', color: Colors.red);
     
     // في حالة الخطأ، قم بتشغيل التطبيق مع عرض الخطأ
+    final remindersNotifier = RemindersNotifier.instance;
+    // محاولة تهيئة RemindersNotifier حتى في حالة الخطأ
+    try {
+      await remindersNotifier.initialize(authProvider: AuthProvider.instance);
+    } catch (_) {
+      // تجاهل خطأ التهيئة هنا
+    }
+    
     runApp(
       MultiProvider(
         providers: [
           ChangeNotifierProvider(create: (_) => LanguageManager()),
           ChangeNotifierProvider(create: (_) => AuthProvider.instance),
           ChangeNotifierProvider.value(
-            value: RemindersNotifier.instance..navigatorKey = navigatorKey,
+            value: remindersNotifier,
           ),
         ],
         child: MyApp(
-          isFirebaseInitialized: _isFirebaseInitialized,
-          isFcmInitialized: _isFcmInitialized,
-          isRevenueCatInitialized: _isRevenueCatInitialized,
-          initializationError: _initializationError ?? e.toString(),
+          isFirebaseInitialized: globals.isFirebaseInitialized,
+          isFcmInitialized: globals.isFcmInitialized,
+          isRevenueCatInitialized: globals.isRevenueCatInitialized,
+          initializationError: globals.initializationError ?? e.toString(),
         ),
       ),
     );
@@ -336,7 +343,7 @@ void _showImmediateMessage(String message, {Color? color}) {
 }
 
 // void _setupMessageHandlers() {
-//   if (!_isFirebaseInitialized) {
+//   if (!globals.isFirebaseInitialized) {
 //     _safeShowMessage('⚠️ Skipping message handlers - Firebase not initialized', color: Colors.orange);
 //     return;
 //   }
@@ -412,26 +419,47 @@ void _showImmediateMessage(String message, {Color? color}) {
 // ✅ تحديث معالج الخلفية أيضاً
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print('📨 BACKGROUND MESSAGE RECEIVED');
+  print('\n🌙 ========== BACKGROUND FCM MESSAGE ==========');
+  print('📨 Message ID: ${message.messageId}');
+  print('⏰ Sent Time: ${message.sentTime}');
+  print('📦 Data Keys: ${message.data.keys.toList()}');
+  print('📦 Full Data: ${message.data}');
+  print('🔔 Notification Title: ${message.notification?.title}');
+  print('🔔 Notification Body: ${message.notification?.body}');
   
   try {
+    print('🔄 Step 1: Checking Firebase initialization...');
     if (Firebase.apps.isEmpty) {
+      print('   ⚠️ Firebase not initialized - initializing now...');
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
+      print('   ✓ Firebase initialized');
+    } else {
+      print('   ✓ Firebase already initialized (${Firebase.apps.length} apps)');
     }
 
+    print('🔄 Step 2: Initializing background services...');
     await _initializeBackgroundServices();
+    print('   ✓ Background services initialized');
 
-    // ✅ استخدام instance method
+    print('🔄 Step 3: Getting FCM service instance...');
     final fcmService = FcmService.instance;
-    await fcmService.processMessage(message, isBackground: true);
+    print('   ✓ FCM service instance obtained');
     
-    print('✅ Background message handled');
+    print('🔄 Step 4: Processing message...');
+    await fcmService.processMessage(message, isBackground: true);
+    print('   ✓ Message processed');
+    
+    print('✅ Background message handled successfully');
+    print('==========================================\n');
     
   } catch (e, stackTrace) {
-    print('❌ Background handler error: $e');
-    print('Stack: $stackTrace');
+    print('❌ ========== BACKGROUND HANDLER ERROR ==========');
+    print('Error: $e');
+    print('Stack trace:');
+    print(stackTrace);
+    print('=================================================\n');
   }
 }
 
@@ -448,7 +476,7 @@ Future<bool> _initializeFirebaseSafely() async {
     // if (!hasInternet) {
     //   _safeShowMessage('⚠️ لا يوجد اتصال بالإنترنت - تخطي تهيئة Firebase',
     //       color: Colors.orange);
-    //   _initializationError = 'لا يوجد اتصال بالإنترنت';
+    //   globals.initializationError = 'لا يوجد اتصال بالإنترنت';
     //   return false;
     // }
     _safeShowMessage('🚀 بدء تهيئة Firebase...', debugOnly: true);
@@ -461,65 +489,54 @@ Future<bool> _initializeFirebaseSafely() async {
       },
     );
     _safeShowMessage('✅ تم تهيئة Firebase بنجاح', color: Colors.green);
-    _isFirebaseInitialized = true;
+    globals.isFirebaseInitialized = true;
     return true;
   } catch (e) {
     _safeShowMessage('❌ خطأ في تهيئة Firebase: $e', color: Colors.red);
-    _initializationError = 'خطأ في تهيئة Firebase: $e';
-    _isFirebaseInitialized = false;
+    globals.initializationError = 'خطأ في تهيئة Firebase: $e';
+    globals.isFirebaseInitialized = false;
     return false;
   }
 }
 
-// ✅ تحسين _initializeFcmSafely
+// ✅ تحسين _initializeFcmSafely - تهيئة FCM مرة واحدة فقط
 Future<bool> _initializeFcmSafely() async {
   try {
-    if (!_isFirebaseInitialized) {
+    if (!globals.isFirebaseInitialized) {
       _safeShowMessage('⚠️ Firebase not initialized, skipping FCM', color: Colors.orange);
       return false;
     }
 
-    _safeShowMessage('🔄 Initializing FCM...', color: Colors.blue);
+    _safeShowMessage('🔄 Initializing FCM Service...', color: Colors.blue);
 
-    // طلب الأذونات
-    try {
-      NotificationSettings settings = await FirebaseMessaging.instance.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-        provisional: false,
-      );
-      
-      _safeShowMessage('🔔 Permission status: ${settings.authorizationStatus}', color: Colors.blue);
-      
-      // الحصول على FCM Token
-      final fcmToken = await FirebaseMessaging.instance.getToken();
-      if (fcmToken != null) {
-        _safeShowMessage('📱 FCM Token: $fcmToken', color: Colors.blue);
-      }
-    } catch (e) {
-      _safeShowMessage('⚠️ Permission/Token error: $e', color: Colors.orange);
-    }
-
-    // تهيئة FCM Service
-    final fcmService = FcmService();
+    // ✅ تهيئة FCM Service مرة واحدة عبر singleton
+    final fcmService = FcmService.instance;
+    
+    // ✅ التهيئة الكاملة عبر FCM service (يتضمن الأذونات والtoken)
     final fcmResult = await fcmService.init().timeout(
-      const Duration(seconds: 10),
+      const Duration(seconds: 15),
       onTimeout: () => {
-        'success': false,
-        'message': 'FCM initialization timeout'
+        'fcmToken': null,
+        'message': 'FCM initialization timeout',
+        'permissionsGranted': false,
       },
     );
 
-    _isFcmInitialized = fcmResult['permissionsGranted'] ?? false;
-    _safeShowMessage('✅ FCM initialized: $_isFcmInitialized', color: Colors.green);
+    globals.isFcmInitialized = fcmResult['permissionsGranted'] ?? false;
     
-    return _isFcmInitialized;
+    final fcmToken = fcmResult['fcmToken'];
+    if (fcmToken != null && fcmToken.toString().length > 20) {
+      _safeShowMessage('✅ FCM Token: ${fcmToken.toString().substring(0, 20)}...', color: Colors.green);
+    }
+    
+    _safeShowMessage('✅ FCM initialized: ${globals.isFcmInitialized}', color: Colors.green);
+    
+    return globals.isFcmInitialized;
     
   } catch (e, stackTrace) {
     _safeShowMessage('❌ FCM initialization error: $e', color: Colors.red);
-    _safeShowMessage('Stack trace: $stackTrace', color: Colors.red);
-    _isFcmInitialized = false;
+    debugPrint('Stack trace: $stackTrace');
+    globals.isFcmInitialized = false;
     return false;
   }
 }
@@ -831,7 +848,7 @@ class MyApp extends StatelessWidget {
                   builder: (_) => SplashScreen(
                     isFirebaseInitialized: isFirebaseInitialized,
                     isFcmInitialized: isFcmInitialized,
-                    isRevenueCatInitialized: _isRevenueCatInitialized,
+                    isRevenueCatInitialized: globals.isRevenueCatInitialized,
                     initializationError: initializationError,
                   ),
                 );

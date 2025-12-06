@@ -18,63 +18,71 @@ class UtilsService {
   ApiConfig get apiConfig => _apiConfig;
 
   // Generic request method (GET/POST)
-  Future<Map<String, dynamic>> request(
-    String method,
-    String endpoint, {
-    Map<String, dynamic>? data,
-    String contentType = 'application/json',
-  }) async {
-    if (!await _apiConfig.checkTokenValidity()) {
-      await _handleInvalidToken();
-      throw Exception('Session expired');
-    }
-
-    final uri = Uri.parse('${AppConstants.API_BASE_URL}/$endpoint');
-    http.Response response;
-
-    try {
-      final headers = {
-        'X-API-Password': AppConstants.API_PASSWORD,
-      };
-
-      final token = await _apiConfig.getToken();
-      if (token != null) {
-        headers['Authorization'] = 'Bearer $token';
-      }
-
-      if (method == 'POST') {
-        headers['Content-Type'] = contentType;
-        response = await http.post(
-          uri,
-          headers: headers,
-          body: contentType == 'application/x-www-form-urlencoded'
-              ? data
-              : jsonEncode(data),
-        );
-      } else {
-        response = await http.get(uri, headers: headers);
-      }
-    } catch (e) {
-      throw Exception('Failed to connect to server');
-    }
-
-    print('Request: $method $endpoint → ${response.statusCode}');
-    final responseData = jsonDecode(response.body);
-
-    if (responseData is Map<String, dynamic> &&
-        responseData['success'] == false &&
-        responseData['message'] == 'no_valid_subscription') {
-      print('🚨 Server returned: no_valid_subscription');
-      print('📍 Endpoint: $endpoint | Method: $method');
-      await handleNoValidSubscription();
-      throw NoValidSubscriptionException('No valid subscription');
-    }
-
-    return {
-      'statusCode': response.statusCode,
-      'data': responseData,
-    };
+ Future<Map<String, dynamic>> request(
+  String method,
+  String endpoint, {
+  Map<String, dynamic>? data,
+  String contentType = 'application/json',
+}) async {
+  if (!await _apiConfig.checkTokenValidity()) {
+    await _handleInvalidToken();
+    throw Exception('Session expired');
   }
+
+  // إنشاء URI مع query parameters للـ GET
+  Uri uri;
+  if (method == 'GET' && data != null && data.isNotEmpty) {
+    uri = Uri.parse('${AppConstants.API_BASE_URL}/$endpoint')
+        .replace(queryParameters: data.map((key, value) => MapEntry(key, value.toString())));
+  } else {
+    uri = Uri.parse('${AppConstants.API_BASE_URL}/$endpoint');
+  }
+
+  http.Response response;
+
+  try {
+    final headers = {
+      'X-API-Password': AppConstants.API_PASSWORD,
+    };
+
+    final token = await _apiConfig.getToken();
+    if (token != null) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+
+    if (method == 'POST') {
+      headers['Content-Type'] = contentType;
+      response = await http.post(
+        uri,
+        headers: headers,
+        body: contentType == 'application/x-www-form-urlencoded'
+            ? data
+            : jsonEncode(data),
+      );
+    } else {
+      response = await http.get(uri, headers: headers);
+    }
+  } catch (e) {
+    throw Exception('Failed to connect to server');
+  }
+
+  print('Request: $method $endpoint → ${response.statusCode}');
+  final responseData = jsonDecode(response.body);
+
+  if (responseData is Map<String, dynamic> &&
+      responseData['success'] == false &&
+      responseData['message'] == 'no_valid_subscription') {
+    print('🚨 Server returned: no_valid_subscription');
+    print('📍 Endpoint: $endpoint | Method: $method');
+    await handleNoValidSubscription();
+    throw NoValidSubscriptionException('No valid subscription');
+  }
+
+  return {
+    'statusCode': response.statusCode,
+    'data': responseData,
+  };
+}
 
   // Handle expired token
   Future<void> _handleInvalidToken() async {

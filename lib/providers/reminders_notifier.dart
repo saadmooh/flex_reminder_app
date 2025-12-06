@@ -797,7 +797,6 @@ class RemindersNotifier extends ChangeNotifier {
       globals.showGlobalSnackBar(
         message, 
         backgroundColor: color ?? Colors.blue,
-        clearPrevious: false, // لا تمسح الرسائل السابقة
       );
     }
   }
@@ -1816,231 +1815,229 @@ class RemindersNotifier extends ChangeNotifier {
   }
 
  /// معالجة رسائل FCM القادمة من FcmService
+/// معالجة رسائل FCM القادمة من FcmService
+/// النسخة المحسّنة مع نظام SnackBar الجديد
 Future<void> handleFcmData(Map<String, dynamic> data) async {
-  // ⚠️ أول شيء - عرض SnackBar للتأكد من وصول الكود (قبل try)
-  globals.showGlobalSnackBar(
-    '🚨 handleFcmData CALLED!',
-    backgroundColor: Colors.red,
-    clearPrevious: true,
-  );
-  
-  // عرض SnackBar ثاني للتأكد من استمرار التنفيذ
-  globals.showGlobalSnackBar(
-    '🔵 البيانات: ${data.keys.toList()}',
-    backgroundColor: Colors.indigo,
-    clearPrevious: true,
-  );
+  // دالة محلية مختصرة لعرض الرسائل
+  Future<void> msg(String text, Color color) async {
+    await globals.showGlobalSnackBar(text, backgroundColor: color);
+  }
   
   try {
-    // SnackBar داخل try مباشرة
-    globals.showGlobalSnackBar(
-      '✅ دخلنا try بنجاح!',
-      backgroundColor: Colors.green,
-      clearPrevious: true,
-    );
+    await msg('🚨 handleFcmData: استُدعيت!', Colors.red);
+    await msg('🔵 البيانات المستلمة: ${data.keys.join(", ")}', Colors.indigo);
+    
     // استخراج البيانات من الرسالة
     String action = data['action']?.toString().trim() ?? '';
     final String postId = data['post_id']?.toString() ?? '';
     final String postTitle = data['post_title']?.toString() ?? '';
-    final String nextReminderTime = data['next_reminder_time']?.toString() ?? '';
     
-    // عرض البيانات المستخرجة
-    globals.showGlobalSnackBar(
-      '� FCM: action=$action, postId=$postId',
-      backgroundColor: Colors.blue,
-      clearPrevious: false,
-    );
+    await msg('📨 action=$action | postId=$postId', Colors.blue);
     
-    // إذا كانت action فارغة، نحاول استنتاجها
+    // محاولة استنتاج action إذا كانت فارغة
     if (action.isEmpty) {
-      action = data['operation']?.toString().trim() ?? '';
-      if (action.isEmpty) {
-        action = 'update';
-        globals.showGlobalSnackBar(
-          '🟠 action فارغ، استخدام: $action',
-          backgroundColor: Colors.orange,
-          clearPrevious: false,
-        );
-      }
+      action = data['operation']?.toString().trim() ?? 'update';
+      await msg('🟠 استخدام action افتراضي: $action', Colors.orange);
     }
     
+    // التحقق من صحة postId
     if (postId.isEmpty) {
-      globals.showGlobalSnackBar(
-        '⚠️ postId فارغ - تجاهل الرسالة',
-        backgroundColor: Colors.orange,
-        clearPrevious: false,
-      );
+      await msg('⚠️ postId فارغ - تجاهل الرسالة', Colors.orange);
       return;
     }
     
+    // تحويل postId إلى رقم
     int? reminderId;
     try {
       reminderId = int.parse(postId);
+      await msg('🔢 reminderId: $reminderId', Colors.teal);
     } catch (e) {
-      globals.showGlobalSnackBar(
-        '❌ خطأ في تحويل postId: $e',
-        backgroundColor: Colors.red,
-        clearPrevious: false,
-      );
+      await msg('❌ خطأ تحويل postId: $e', Colors.red);
       return;
     }
     
-    // عرض معلومات المعالجة
-    globals.showGlobalSnackBar(
-      '🔄 معالجة: ID=$reminderId, action=$action',
-      backgroundColor: Colors.cyan,
-      clearPrevious: false,
-    );
-    
-    // التحقق مما إذا كان التذكير موجودًا محليًا
+    // التحقق من وجود التذكير محلياً
     bool existsLocally = _readReminders.any((r) => r.id == reminderId) ||
                          _unreadReminders.any((r) => r.id == reminderId);
     
-    globals.showGlobalSnackBar(
-      '📍 موجود محلياً: $existsLocally',
-      backgroundColor: Colors.purple,
-      clearPrevious: false,
-    );
+    await msg('📍 موجود محلياً: ${existsLocally ? "نعم" : "لا"}', Colors.purple);
     
-    switch (action.toLowerCase().trim()) {
+    // معالجة حسب نوع العملية
+    final actionLower = action.toLowerCase().trim();
+    
+    switch (actionLower) {
       case 'reminder_updated':
       case 'update':
-        globals.showGlobalSnackBar(
-          '� SWITCH: update - بدء المعالجة',
-          backgroundColor: Colors.teal,
-          clearPrevious: false,
-        );
+        await msg('🔄 بدء: تحديث التذكير $reminderId', Colors.teal);
+        
         if (existsLocally) {
           await handleUpdateFromFcm(reminderId);
         } else {
           await handleNewReminderFromFcm(reminderId);
         }
-        globals.showGlobalSnackBar(
-          '✅ update: اكتمل!',
-          backgroundColor: Colors.green,
-          clearPrevious: false,
-        );
+        
+        await msg('✅ اكتمل: تحديث التذكير $reminderId', Colors.green);
         break;
         
       case 'reschedule':
-        globals.showGlobalSnackBar(
-          '� SWITCH: reschedule - بدء المعالجة',
-          backgroundColor: Colors.teal,
-          clearPrevious: false,
-        );
+        await msg('🔄 بدء: إعادة جدولة $reminderId', Colors.teal);
+        
         if (existsLocally) {
           await handleRescheduleFromFcm(reminderId);
         } else {
           await handleNewReminderFromFcm(reminderId);
         }
-        globals.showGlobalSnackBar(
-          '✅ reschedule: اكتمل!',
-          backgroundColor: Colors.green,
-          clearPrevious: false,
-        );
+        
+        await msg('✅ اكتمل: إعادة الجدولة $reminderId', Colors.green);
         break;
         
       case 'new':
-        globals.showGlobalSnackBar(
-          '🆕 SWITCH: new - بدء المعالجة',
-          backgroundColor: Colors.teal,
-          clearPrevious: false,
-        );
+        await msg('🆕 بدء: إضافة تذكير جديد $reminderId', Colors.teal);
         await handleNewReminderFromFcm(reminderId);
-        globals.showGlobalSnackBar(
-          '✅ new: اكتمل! Title: $postTitle',
-          backgroundColor: Colors.green,
-          clearPrevious: false,
-        );
+        
+        if (postTitle.isNotEmpty) {
+          await msg('✅ تمت الإضافة: $postTitle', Colors.green);
+        } else {
+          await msg('✅ اكتمل: إضافة التذكير $reminderId', Colors.green);
+        }
         break;
         
       case 'markas_read':
       case 'mark_as_read':
-        globals.showGlobalSnackBar(
-          '✅ SWITCH: mark_as_read - بدء المعالجة',
-          backgroundColor: Colors.teal,
-          clearPrevious: false,
-        );
+        await msg('✅ بدء: وضع علامة مقروء $reminderId', Colors.teal);
+        
         if (existsLocally) {
           await handleMarkAsReadFromFcm(reminderId);
+          await msg('✅ اكتمل: وضع علامة مقروء $reminderId', Colors.green);
         } else {
+          // جلب التذكير من السيرفر إذا لم يكن موجوداً
           try {
+            await msg('📥 جلب التذكير من السيرفر...', Colors.blue);
             final reminder = await _apiService.getReminderById(reminderId);
+            
             if (reminder.id == reminderId && reminder.isOpened == 1) {
               _readReminders.add(reminder);
               _readReminders.sort((a, b) => b.id.compareTo(a.id));
               await _updateCachedReminderFixed(reminder);
               notifyListeners();
+              await msg('✅ تمت الإضافة كمقروء', Colors.green);
             }
           } catch (e) {
-            globals.showGlobalSnackBar(
-              '❌ خطأ جلب التذكير: $e',
-              backgroundColor: Colors.red,
-              clearPrevious: false,
-            );
+            await msg('❌ خطأ في جلب التذكير: $e', Colors.red);
           }
         }
-        globals.showGlobalSnackBar(
-          '✅ mark_as_read: اكتمل!',
-          backgroundColor: Colors.green,
-          clearPrevious: false,
-        );
         break;
         
       case 'delete':
-        globals.showGlobalSnackBar(
-          '🗑️ SWITCH: delete - بدء المعالجة',
-          backgroundColor: Colors.teal,
-          clearPrevious: false,
-        );
+        await msg('🗑️ بدء: حذف التذكير $reminderId', Colors.teal);
+        
         if (existsLocally) {
           await deleteReminderComprehensive(reminderId);
+          await msg('✅ اكتمل: حذف التذكير $reminderId', Colors.green);
+        } else {
+          await msg('⚠️ التذكير غير موجود محلياً', Colors.orange);
         }
-        globals.showGlobalSnackBar(
-          '✅ delete: اكتمل!',
-          backgroundColor: Colors.green,
-          clearPrevious: false,
-        );
         break;
         
       default:
-        globals.showGlobalSnackBar(
-          '⚠️ action غير مدعوم: $action',
-          backgroundColor: Colors.orange,
-          clearPrevious: false,
-        );
+        await msg('⚠️ action غير معروف: $action', Colors.orange);
+        await msg('💡 محاولة المعالجة كتحديث...', Colors.blue);
+        
+        // محاولة معالجته كتحديث افتراضي
+        if (existsLocally) {
+          await handleUpdateFromFcm(reminderId);
+        } else {
+          await handleNewReminderFromFcm(reminderId);
+        }
     }
     
-    // رسالة الاكتمال النهائية
-    globals.showGlobalSnackBar(
-      '🎉 FCM اكتمل! ID=$reminderId',
-      backgroundColor: Colors.green,
-      duration: const Duration(seconds: 4),
-      clearPrevious: false,
-    );
+    // رسالة إتمام نهائية
+    await msg('🎉 FCM: اكتملت المعالجة بنجاح!', Colors.green.shade700);
     
   } catch (e, stackTrace) {
-    // عرض الخطأ بشكل واضح
-    globals.showGlobalSnackBar(
-      '❌ خطأ FCM: ${e.runtimeType}',
-      backgroundColor: Colors.red,
-      clearPrevious: false,
-      duration: const Duration(seconds: 5),
-    );
+    await msg('❌ خطأ FCM: ${e.runtimeType}', Colors.red);
+    await msg('📛 التفاصيل: ${e.toString().substring(0, 50)}...', Colors.red.shade900);
     
-    // عرض تفاصيل الخطأ
-    globals.showGlobalSnackBar(
-      '📛 التفاصيل: $e',
-      backgroundColor: Colors.red.shade900,
-      clearPrevious: false,
-      duration: const Duration(seconds: 5),
-    );
-    
-    // طباعة stack trace في console
-    debugPrint('❌❌❌ handleFcmData ERROR: $e');
+    // طباعة تفاصيل الخطأ الكاملة في console
+    debugPrint('❌❌❌ handleFcmData ERROR:');
+    debugPrint('Error: $e');
     debugPrint('Stack trace: $stackTrace');
   }
 }
+
+
+
+// ============================================================================
+// تحديث handleNewReminderFromFcm
+// ============================================================================
+
+Future<void> handleNewReminderFromFcm(int reminderId) async {
+  try {
+    await globals.showGlobalSnackBar(
+      '🆕 معالجة تذكير جديد: $reminderId',
+      backgroundColor: Colors.cyan,
+    );
+    
+    // التحقق من وجود التذكير محلياً
+    bool exists = _readReminders.any((r) => r.id == reminderId) ||
+        _unreadReminders.any((r) => r.id == reminderId);
+
+    if (exists) {
+      await globals.showGlobalSnackBar(
+        '🔄 التذكير موجود، جاري التحديث...',
+        backgroundColor: Colors.orange,
+      );
+      await handleUpdateFromFcm(reminderId);
+      return;
+    }
+
+    // جلب التذكير من السيرفر
+    await globals.showGlobalSnackBar(
+      '📥 جلب البيانات من السيرفر...',
+      backgroundColor: Colors.blue,
+    );
+    
+    final newReminder = await _apiService.getReminderById(reminderId);
+
+    if (newReminder.id == reminderId) {
+      // إضافة التذكير إلى القائمة المناسبة
+      final targetList =
+          newReminder.isOpened == 1 ? _readReminders : _unreadReminders;
+      targetList.add(newReminder);
+      targetList.sort((a, b) => b.id.compareTo(a.id));
+
+      // جدولة الإشعارات إذا كان غير مقروء
+      if (newReminder.isOpened != 1) {
+        await _scheduleReminderNotifications(newReminder);
+      }
+
+      // تحديث التخزين المؤقت
+      await _updateCachedReminderFixed(newReminder);
+      _totalReminders++;
+      
+      // تحديث الواجهة
+      notifyListeners();
+      
+      await globals.showGlobalSnackBar(
+        '🎉 تمت الإضافة بنجاح!',
+        backgroundColor: Colors.green,
+      );
+    } else {
+      await globals.showGlobalSnackBar(
+        '❌ فشل التحقق من التذكير',
+        backgroundColor: Colors.red,
+      );
+    }
+  } catch (e) {
+    await globals.showGlobalSnackBar(
+      '❌ خطأ handleNewReminderFromFcm: $e',
+      backgroundColor: Colors.red,
+    );
+    _safeShowMessage('Error in handleNewReminderFromFcm: $e');
+  }
+}
+
+
 
   Future<void> handleRescheduleFromFcm(int reminderId) async {
     try {
@@ -2083,80 +2080,6 @@ Future<void> handleFcmData(Map<String, dynamic> data) async {
     }
   }
 
-  Future<void> handleNewReminderFromFcm(int reminderId) async {
-    globals.showGlobalSnackBar(
-      '🆕 handleNewReminderFromFcm بدأت: ID=$reminderId',
-      backgroundColor: Colors.cyan,
-      clearPrevious: false,
-    );
-    
-  try {
-      bool exists = _readReminders.any((r) => r.id == reminderId) ||
-          _unreadReminders.any((r) => r.id == reminderId);
-
-      globals.showGlobalSnackBar(
-        '📍 موجود مسبقاً: $exists',
-        backgroundColor: exists ? Colors.orange : Colors.green,
-        clearPrevious: false,
-      );
-
-      if (!exists) {
-        globals.showGlobalSnackBar(
-          '📥 جاري جلب التذكير من السيرفر...',
-          backgroundColor: Colors.blue,
-          clearPrevious: false,
-        );
-        
-        final newReminder = await _apiService.getReminderById(reminderId);
-
-        globals.showGlobalSnackBar(
-          '✅ تم جلب التذكير: ${newReminder.id}',
-          backgroundColor: Colors.green,
-          clearPrevious: false,
-        );
-
-        if (newReminder.id == reminderId) {
-          final targetList =
-              newReminder.isOpened == 1 ? _readReminders : _unreadReminders;
-          targetList.add(newReminder);
-          targetList.sort((a, b) => b.id.compareTo(a.id));
-
-          if (newReminder.isOpened != 1) {
-            await _scheduleReminderNotifications(newReminder);
-          }
-
-          await _updateCachedReminderFixed(newReminder);
-          _totalReminders++;
-          notifyListeners();
-          
-          globals.showGlobalSnackBar(
-            '🎉 تمت إضافة التذكير بنجاح!',
-            backgroundColor: Colors.green,
-            clearPrevious: false,
-          );
-        } else {
-          globals.showGlobalSnackBar(
-            '❌ فشل جلب التذكير',
-            backgroundColor: Colors.red,
-            clearPrevious: false,
-          );
-        }
-    } else {
-        globals.showGlobalSnackBar(
-          '🔄 التذكير موجود، جاري التحديث...',
-          backgroundColor: Colors.orange,
-          clearPrevious: false,
-        );
-        await handleUpdateFromFcm(reminderId);
-      }
-    } catch (e) {
-      globals.showGlobalSnackBar(
-        '❌ خطأ handleNewReminderFromFcm: $e',
-        backgroundColor: Colors.red,
-        clearPrevious: false,
-      );
-    }
-  }
 
   Future<void> handleMarkAsReadFromFcm(int reminderId) async {
   try {

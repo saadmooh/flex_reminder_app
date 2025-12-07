@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flex_reminder/l10n/app_localizations.dart';
 import 'package:flex_reminder/services/revenuecat_service.dart';
 import 'package:flex_reminder/providers/reminders_notifier.dart';
+import 'package:flex_reminder/services/fcm_service.dart'; // Import FcmService
 
 class AuthenticationService {
   final BuildContext context;
@@ -147,6 +148,16 @@ class AuthenticationService {
     _debugLog('Starting post-auth flow for user: $userId');
 
     try {
+      // Send FCM Token to backend after successful login
+      _debugLog('Attempting to send FCM token to backend.');
+      try {
+        await FcmService.instance.sendFcmTokenToBackend();
+        _debugLog('FCM token send process initiated.');
+      } catch (e) {
+        _debugLog('Sending FCM token failed (non-critical): $e');
+        // Do not rethrow, as this should not block the user flow.
+      }
+
       // تسجيل الدخول في RevenueCat (التهيئة الأولية تمت في main.dart)
       await RevenueCatService.instance.loginUser(userId.toString());
 

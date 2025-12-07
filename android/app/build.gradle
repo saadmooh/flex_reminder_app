@@ -32,7 +32,7 @@ android {
     defaultConfig {
         applicationId "com.saadmohammed2000.flex_reminder"
         minSdkVersion 24
-        targetSdkVersion 36
+        targetSdkVersion 34
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true

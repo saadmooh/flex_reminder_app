@@ -9,50 +9,47 @@ class SubscriptionManager {
   SubscriptionManager(this.context);
 
   Future<Map<String, dynamic>> checkSubscription({String? userId}) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      // التحقق من الاتصال بالإنترنت
-     // bool hasInternet = await ConnectivityHelper.checkInternetConnection(verbose: true);
+  try {
+    final prefs = await SharedPreferences.getInstance();
 
-      if ( userId != null) {
-        if (kDebugMode) {
-          print('SubscriptionManager: Ensuring RevenueCat is initialized for user: $userId');
-        }
-        bool initialized = await RevenueCatService.instance.initialize(userId: userId);
-        if (!initialized) {
-          if (kDebugMode) {
-            print('SubscriptionManager: RevenueCat initialization failed for user: $userId');
-          }
-          return await _checkSubscriptionOffline();
-        }
-
-        if (kDebugMode) {
-          print('SubscriptionManager: Checking premium status via RevenueCat...');
-        }
-        
-        bool isPremium = await RevenueCatService.instance.isPremiumUser();
-        // تخزين حالة الاشتراك محليًا
-        await _saveSubscriptionStatusLocally(isPremium, userId);
-        
-        if (kDebugMode) {
-          print('SubscriptionManager: Premium status: $isPremium');
-        }
-        
-        return {
-          'subscribed': isPremium,
-          'message': isPremium ? 'Premium active' : 'No premium subscription',
-        };
-      } else {
-        // إذا مفيش إنترنت، استخدم البيانات المحلية
+    if (userId != null) {
+      if (kDebugMode) {
+        print('SubscriptionManager: Checking subscription for user: $userId');
+      }
+      
+      // ✅ محاولة التهيئة بدون انتظار طويل
+      bool initialized = await RevenueCatService.instance.initialize(userId: userId)
+          .timeout(
+            const Duration(seconds: 8), // ✅ timeout قصير
+            onTimeout: () {
+              if (kDebugMode) {
+                print('SubscriptionManager: RevenueCat init timeout, using offline data');
+              }
+              return false;
+            },
+          );
+      
+      if (!initialized) {
         return await _checkSubscriptionOffline();
       }
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error checking subscription: $e');
-      }
+
+      bool isPremium = await RevenueCatService.instance.isPremiumUser();
+      await _saveSubscriptionStatusLocally(isPremium, userId);
+      
+      return {
+        'subscribed': isPremium,
+        'message': isPremium ? 'Premium active' : 'No premium subscription',
+      };
+    } else {
       return await _checkSubscriptionOffline();
     }
+  } catch (e) {
+    if (kDebugMode) {
+      print('Error checking subscription: $e');
+    }
+    return await _checkSubscriptionOffline();
   }
+}
 
   Future<void> showPaywall({String? userId}) async {
     try {

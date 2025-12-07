@@ -837,7 +837,23 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
     }
   }
-
+// ✅ دالة لإعادة محاولة إرسال FCM token
+Future<void> retryFcmTokenSend({int maxRetries = 3}) async {
+  for (int i = 0; i < maxRetries; i++) {
+    try {
+      _safeShowMessage('🔄 Retry FCM token send attempt ${i + 1}/$maxRetries');
+      await FcmService.instance.sendFcmTokenToBackend();
+      _safeShowMessage('✅ FCM token sent successfully on retry');
+      return;
+    } catch (e) {
+      _safeShowMessage('❌ Retry $i failed: $e');
+      if (i < maxRetries - 1) {
+        await Future.delayed(Duration(seconds: (i + 1) * 2));
+      }
+    }
+  }
+  _safeShowMessage('❌ All FCM token retry attempts failed');
+}
   Future<Map<String, dynamic>> resendVerificationCode(String email) async {
     try {
       _isLoading = true;

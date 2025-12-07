@@ -18,6 +18,24 @@ bool _isRemindersNotifierInitialized = false;
 String? _initializationError;
 
 // ============================================================================
+// متغير وضع Debug لتفعيل/تعطيل رسائل SnackBar
+// ============================================================================
+bool _isDebugMode = false;
+
+// ============================================================================
+// Getters and Setters for Debug Mode
+// ============================================================================
+bool get isDebugMode => _isDebugMode;
+set isDebugMode(bool value) {
+  _isDebugMode = value;
+  debugPrint('🐛 وضع Debug ${value ? "مُفعّل" : "مُعطّل"}');
+  if (!value) {
+    // مسح قائمة الانتظار عند تعطيل وضع Debug
+    clearSnackBarQueue();
+  }
+}
+
+// ============================================================================
 // Getters and Setters for Firebase
 // ============================================================================
 bool get isFirebaseInitialized => _isFirebaseInitialized;
@@ -72,6 +90,12 @@ class _SnackBarQueueManager {
     Color backgroundColor = Colors.blue,
     Duration duration = const Duration(milliseconds: 1500),
   }) {
+    // التحقق من وضع Debug
+    if (!_isDebugMode) {
+      debugPrint('🐛 وضع Debug معطّل - تم تجاهل رسالة: $message');
+      return;
+    }
+
     _queue.add(_SnackBarMessage(
       message: message,
       backgroundColor: backgroundColor,
@@ -95,6 +119,14 @@ class _SnackBarQueueManager {
     _isProcessing = true;
 
     while (_queue.isNotEmpty) {
+      // التحقق من وضع Debug أثناء المعالجة
+      if (!_isDebugMode) {
+        _queue.clear();
+        _isProcessing = false;
+        debugPrint('🐛 تم إيقاف معالجة الرسائل - وضع Debug معطّل');
+        return;
+      }
+
       final message = _queue.removeFirst();
       
       try {
@@ -205,6 +237,7 @@ class _SnackBarMessage {
 /// عرض SnackBar باستخدام نظام قائمة الانتظار المحسّن
 /// 
 /// هذه الدالة تضمن عرض جميع الرسائل بالتسلسل دون تكدس
+/// ملاحظة: يتطلب تفعيل وضع Debug (isDebugMode = true) لعرض الرسائل
 /// 
 /// Parameters:
 /// - [message]: النص المراد عرضه
@@ -216,6 +249,12 @@ Future<void> showGlobalSnackBar(
   Duration duration = const Duration(milliseconds: 1500),
 }) async {
   try {
+    // التحقق من وضع Debug
+    if (!_isDebugMode) {
+      debugPrint('🐛 وضع Debug معطّل - لن يتم عرض: $message');
+      return;
+    }
+
     // إضافة الرسالة إلى قائمة الانتظار
     _SnackBarQueueManager().addMessage(
       message: message,
@@ -299,6 +338,7 @@ void printServicesStatus() {
   debugPrint('   FCM: ${_isFcmInitialized ? "✅" : "❌"}');
   debugPrint('   RevenueCat: ${_isRevenueCatInitialized ? "✅" : "❌"}');
   debugPrint('   RemindersNotifier: ${_isRemindersNotifierInitialized ? "✅" : "❌"}');
+  debugPrint('   🐛 وضع Debug: ${_isDebugMode ? "مُفعّل" : "مُعطّل"}');
   if (_initializationError != null) {
     debugPrint('   ⚠️ خطأ: $_initializationError');
   }

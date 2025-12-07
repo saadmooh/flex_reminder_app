@@ -92,7 +92,6 @@ class AuthProvider with ChangeNotifier {
           .listen(_handleGoogleAuthenticationEvent)
         ..onError(_handleGoogleAuthenticationError);
 
-   //   await _googleSignIn.attemptLightweightAuthentication();
       await initializeAuthentication();
     } catch (e) {
       _errorMessage = 'Error initializing Google Sign-In: $e';
@@ -131,19 +130,6 @@ class AuthProvider with ChangeNotifier {
           : 'Unknown error during Google Sign-In';
     });
   }
-
-  // String _getGoogleSignInErrorMessage(GoogleSignInException e) {
-  //   return switch (e.code) {
-  //     'sign_in_canceled' => 'Google Sign-In cancelled',
-  //     'network_error' => 'Network error, check your internet connection',
-  //     'sign_in_required' => 'Sign-in required, please select a Google account',
-  //     'sign_in_failed' => 'Google Sign-In failed, try again',
-  //     'invalid_credential' => 'Invalid Google credentials',
-  //     'account_already_exists' =>
-  //       'Account already exists, try another sign-in method',
-  //     _ => 'Google Sign-In error: ${e.description}',
-  //   };
-  // }
 
   Future<void> initializeAuthentication() async {
     if (_isInitializing) {
@@ -338,7 +324,14 @@ class AuthProvider with ChangeNotifier {
           await setUserId(userData['user']['id']);
           _isAuthenticated = true;
           _isOfflineMode = false;
-          await FcmService.instance.sendFcmTokenToBackend();
+          
+          // ✅ إرسال FCM token قبل أي شيء آخر
+          try {
+            await FcmService.instance.sendFcmTokenToBackend();
+          } catch (e) {
+            _safeShowMessage('⚠️ FCM token send failed: $e');
+          }
+          
           _safeShowMessage('✅ Login successful, Activated: $_isActivated');
           return {'success': true, 'activated': true, 'userData': userData};
         } else {
@@ -494,20 +487,19 @@ class AuthProvider with ChangeNotifier {
       _safeShowMessage('✅ Firebase authentication successful');
 
       // الحصول على Firebase ID Token
-      // الحصول على Firebase ID Token
-String idToken;
-try {
-  final token = await firebaseUser.getIdToken(true); // force refresh
-  if (token == null) {
-    _errorMessage = 'فشل في الحصول على رمز Firebase';
-    return {'success': false, 'message': _errorMessage};
-  }
-  idToken = token;
-} catch (e) {
-  _safeShowMessage('Token error: $e');
-  _errorMessage = 'فشل في الحصول على رمز Firebase';
-  return {'success': false, 'message': _errorMessage};
-}
+      String idToken;
+      try {
+        final token = await firebaseUser.getIdToken(true); // force refresh
+        if (token == null) {
+          _errorMessage = 'فشل في الحصول على رمز Firebase';
+          return {'success': false, 'message': _errorMessage};
+        }
+        idToken = token;
+      } catch (e) {
+        _safeShowMessage('Token error: $e');
+        _errorMessage = 'فشل في الحصول على رمز Firebase';
+        return {'success': false, 'message': _errorMessage};
+      }
 
       // إعداد بيانات المستخدم
       final googleUserData = <String, String>{
@@ -566,11 +558,14 @@ try {
           _isAuthenticated = true;
           _isOfflineMode = false;
 
-          // إرسال FCM token
+          // ✅ إرسال FCM token قبل أي شيء آخر
           try {
+            _safeShowMessage('🔄 Sending FCM token to backend...');
             await FcmService.instance.sendFcmTokenToBackend();
+            _safeShowMessage('✅ FCM token sent successfully');
           } catch (e) {
-            _safeShowMessage('FCM token send failed: $e');
+            _safeShowMessage('⚠️ FCM token send failed: $e');
+            // لا تفشل عملية تسجيل الدخول بسبب FCM
           }
 
           _safeShowMessage('✅ Successfully signed in with Google');
@@ -602,8 +597,6 @@ try {
     }
   }
 
-// حذف الدالة المكررة _getGoogleSignInErrorMessage إذا كانت موجودة في الأسفل
-// واستبدال الدالة الأصلية بهذه النسخة المحسنة:
   String _getGoogleSignInErrorMessage(GoogleSignInException e) {
     final errorString = e.toString().toLowerCase();
 
@@ -909,6 +902,7 @@ try {
     _pendingVerificationEmail = null;
     notifyListeners();
   }
+
   // دالة لتحديد حالة التحميل العادي
   void setLoading(bool loading) {
     _isLoading = loading;
@@ -927,6 +921,7 @@ try {
     _isGoogleSignInLoading = false;
     notifyListeners();
   }
+
   void setState(VoidCallback fn) {
     fn();
     notifyListeners();

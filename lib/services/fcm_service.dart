@@ -30,10 +30,6 @@ class FcmService {
   // 🔍 FCM Debug Mode - Set to true for detailed logging
   static bool debugMode = true;
 
-  // إضافة متغيرات Rate Limiting
-  DateTime? _lastSnackBarTime;
-  final Duration _snackBarThrottle = const Duration(milliseconds: 500);
-
   // إضافة متغير لتتبع التهيئة
   bool _isInitialized = false;
 
@@ -53,52 +49,38 @@ class FcmService {
   bool get isInitialized => _isInitialized;
 
   // Method channels for communication with native code
-
   static const MethodChannel _deeplinkChannel = MethodChannel('com.saadmohammed2000.flex_reminder/deeplink');
 
-  // ✅ دالة محسّنة لعرض الرسائل
+  // ✅ دالة محسّنة لعرض الرسائل - تم تحديثها حسب التعديلات
   void _safeShowMessage(String message, {Color? color, bool debugOnly = false, bool force = false}) {
     // 1. طباعة في console دائماً
     if (kDebugMode) {
       debugPrint('🔵 FCM: $message');
     }
 
-    // 2. عرض SnackBar (إذا لم يكن debugOnly فقط)
+    // 2. عرض SnackBar باستخدام النظام العام من globals.dart
     if (!debugOnly) {
-      // Rate limiting
-      final now = DateTime.now();
-      if (!force && _lastSnackBarTime != null && 
-          now.difference(_lastSnackBarTime!) < _snackBarThrottle) {
-        debugPrint('⏭️ SnackBar throttled: $message');
-        return;
-      }
-      
-      _lastSnackBarTime = now;
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        try {
-          final currentState = scaffoldMessengerKey.currentState;
-          if (currentState != null && currentState.mounted) {
-            currentState.clearSnackBars();
-            currentState.showSnackBar(
-              SnackBar(
-                content: Text(message),
-                backgroundColor: color ?? Colors.blue,
-                duration: const Duration(seconds: 2),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-        } catch (e) {
-          debugPrint('⚠️ SnackBar error: $e');
-        }
-      });
+      // استخدام showGlobalSnackBar من globals.dart
+      showGlobalSnackBar(
+        message,
+        backgroundColor: color ?? Colors.blue,
+        duration: const Duration(milliseconds: 1500),
+      );
     }
   }
 
-  // ✅ استبدل _showSnackBar القديمة بهذه
+  // ✅ استبدل _showSnackBar القديمة بهذه - تم تحديثها حسب التعديلات
   void _showSnackBar(String message, Color backgroundColor) {
-    _safeShowMessage(message, color: backgroundColor, debugOnly: true); // فقط للـ debug
+    if (kDebugMode) {
+      debugPrint('🔵 FCM: $message');
+    }
+    
+    // استخدام النظام العام
+    showGlobalSnackBar(
+      message,
+      backgroundColor: backgroundColor,
+      duration: const Duration(milliseconds: 1500),
+    );
   }
 
   // 🔍 FCM Debug Logger - Detailed logging for troubleshooting
@@ -216,7 +198,7 @@ class FcmService {
       debugPrint('📱 حالة الإذن: ${settings.authorizationStatus}');
 
       if (settings.authorizationStatus == AuthorizationStatus.denied) {
-        _safeShowMessage('تم رفض إذن الإشعارات', color: Colors.red, force: true);
+        await showErrorSnackBar('تم رفض إذن الإشعارات');
         return false;
       }
 
@@ -233,13 +215,13 @@ class FcmService {
 
       // رسالة واحدة فقط للنتيجة النهائية
       if (_permissionsGranted) {
-        _safeShowMessage('✅ تم منح الأذونات', color: Colors.green, force: true);
+        await showSuccessSnackBar('تم منح الأذونات');
       }
 
       return _permissionsGranted;
     } catch (e) {
       debugPrint('❌ خطأ في الأذونات: $e');
-      _safeShowMessage('خطأ في الأذونات', color: Colors.red, force: true);
+      await showErrorSnackBar('خطأ في الأذونات');
       return false;
     }
   }
@@ -256,6 +238,9 @@ class FcmService {
     }
 
     try {
+      // ✅ ضبط وضع Debug في بداية التهيئة
+      setDebugMode(debugMode);
+      
       debugPrint('🔄 Starting FCM initialization...');
       
       // التحقق من Firebase
@@ -309,8 +294,8 @@ class FcmService {
       }
 
       _isInitialized = true;
-      // globals.isFirebaseInitialized = true; // Removed: property doesn't exist in globals.dart
-      _safeShowMessage('✅ FCM جاهز', color: Colors.green, force: true);
+      // ✅ استخدام الدوال المساعدة من globals.dart
+      await showSuccessSnackBar('FCM جاهز');
 
       return {
         'fcmToken': fcmToken,
@@ -320,7 +305,8 @@ class FcmService {
     } catch (e, stackTrace) {
       debugPrint('❌ FCM init failed: $e');
       debugPrint('Stack trace: $stackTrace');
-      _safeShowMessage('فشل تهيئة FCM: $e', color: Colors.red, force: true);
+      // ✅ استخدام دالة الخطأ
+      await showErrorSnackBar('فشل تهيئة FCM');
       return {
         'fcmToken': null,
         'message': 'Failed: $e',
@@ -336,7 +322,9 @@ class FcmService {
         'messageId': message.messageId,
         'dataKeys': message.data.keys.toList(),
       });
-      _safeShowMessage('🔄 Processing message (background: $isBackground)');
+      
+      // استخدام دالة التحميل
+      await showLoadingSnackBar('جاري معالجة الرسالة...');
       
     try {
     
@@ -429,10 +417,16 @@ class FcmService {
       _fcmDebugLog('PROCESS', '✅ Message processing COMPLETE');
       debugPrint('✅ Message processed');
       
+      // في النهاية
+      await showSuccessSnackBar('تمت معالجة الرسالة');
+      
     } catch (e, s) {
       _fcmDebugLog('PROCESS', '❌ EXCEPTION: $e');
       print('🔴 Error: $e\n$s');
       debugPrint('❌ Process error: $e');
+      
+      await showErrorSnackBar('خطأ في معالجة الرسالة');
+      
       // إشعار احتياطي
       try {
         final title = message.data['post_title']?.toString() ?? 'تذكير';
@@ -442,26 +436,13 @@ class FcmService {
     }
   }
 
-  // ✅ دالة عرض إشعارات FCM (تبقى static)
+  // ✅ دالة عرض إشعارات FCM (تبقى static) - تم تحديثها حسب التعديلات
   static void _showFcmNotificationSnackBar(String title, String body) {
     if (title.isEmpty && body.isEmpty) return;
-    final msg = title.isNotEmpty ? '$title: $body' : body;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final ctx = navigatorKey.currentContext;
-      if (ctx == null) return;
-      final messenger = ScaffoldMessenger.maybeOf(ctx);
-      if (messenger == null) return;
-
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('🔔 $msg'),
-          backgroundColor: Colors.blue,
-          duration: const Duration(seconds: 3),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    });
+    final msg = title.isNotEmpty ? '$title${body.isNotEmpty ? ': $body' : ''}' : body;
+    
+    // استخدام النظام العام من globals.dart
+    showInfoSnackBar(msg); // أو showGlobalSnackBar('🔔 $msg', ...)
   }
 
   // الدوال المساعدة الأخرى تبقى كما هي...
@@ -499,10 +480,6 @@ class FcmService {
 
     return true;
   }
-
-  // Native method channel handlers removed
-
-
 
   // ============================================================================
   // الحل 1: إضافة فحوصات أمان في processMessage
@@ -544,7 +521,7 @@ class FcmService {
     debugPrint('🔵 [_processReminderOperation] data keys: ${data.keys.toList()}');
     debugPrint('🔵 [_processReminderOperation] full data: $data');
     
-    _safeShowMessage('🔄 Processing: $action for reminder: $reminderId', color: Colors.blue);
+    await showInfoSnackBar('معالجة: $action');
     
     // استدعاء RemindersNotifier لمعالجة رسالة FCM
     final Map<String, dynamic> fcmData = data;
@@ -555,11 +532,13 @@ class FcmService {
     print('🔵🔵🔵 [_processReminderOperation] AFTER handleFcmData - Success!');
     debugPrint('🔵 [_processReminderOperation] handleFcmData completed successfully');
     
-    _safeShowMessage('✅ FCM message processed by RemindersNotifier', color: Colors.green);
+    await showSuccessSnackBar('تمت معالجة التذكير');
   } catch (e, s) {
     debugPrint('🔴 [_processReminderOperation] ERROR: $e');
     debugPrint('🔴 [_processReminderOperation] Stack: $s');
-    _safeShowMessage('❌ Error in _processReminderOperation: $e', color: Colors.red);
+    
+    await showErrorSnackBar('خطأ في معالجة التذكير');
+    
     print('❌ Error: $e\n$s');
     
     // إرسال إشعار احتياطي
@@ -812,8 +791,8 @@ Future<void> setupMessageHandlers() async {
     _fcmDebugLog('SETUP', 'Starting message handlers setup...');
     
     if (Firebase.apps.isEmpty) {
-    _safeShowMessage('⚠️ Skipping message handlers - Firebase app not active', color: Colors.orange);
-    _fcmDebugLog('SETUP', 'FAILED - Firebase not initialized');
+      await showWarningSnackBar('Firebase غير مهيأ');
+      _fcmDebugLog('SETUP', 'FAILED - Firebase not initialized');
     return;
   }
 
@@ -854,12 +833,12 @@ Future<void> setupMessageHandlers() async {
         await processMessageSafe(message, isBackground: false);
         
         _fcmDebugLog('FOREGROUND', '✅ Message processed successfully');
-        _safeShowMessage('✅ Message processed successfully', color: Colors.green);
+        await showSuccessSnackBar('تمت المعالجة');
         
       } catch (e, stackTrace) {
         _fcmDebugLog('FOREGROUND', '❌ ERROR: $e');
         print('🔴 Error: $e\nStack: $stackTrace');
-        _safeShowMessage('❌ Error processing message: $e', color: Colors.red);
+        await showErrorSnackBar('خطأ في المعالجة');
       }
     }, onError: (error) {
       _fcmDebugLog('FOREGROUND', '❌ Stream error: $error');
@@ -907,12 +886,12 @@ Future<void> setupMessageHandlers() async {
     });
 
     _fcmDebugLog('SETUP', '✓ All listeners registered successfully');
-    _safeShowMessage('✅ Message handlers configured', color: Colors.green);
+    await showSuccessSnackBar('تم تكوين معالجات الرسائل');
     
   } catch (e, stackTrace) {
     _fcmDebugLog('SETUP', '❌ Setup error: $e');
     print('🔴 Error: $e\nStack: $stackTrace');
-    _safeShowMessage('❌ Setup error: $e', color: Colors.red);
+    await showErrorSnackBar('خطأ في الإعداد');
   }
 }
 
@@ -1143,5 +1122,26 @@ Future<void> _handleMessageOpenedApp(RemoteMessage message) async {
 
   static void resetInstance() {
     _instance = null;
+  }
+
+  // ✅ اختياري: إضافة دالة مساعدة في FcmService للتحكم في وضع Debug
+  /// تفعيل/تعطيل رسائل FCM Debug
+  void setDebugMode(bool enabled) {
+    debugMode = enabled;
+    isDebugMode = enabled; // من globals.dart
+    debugPrint('🐛 FCM Debug Mode: ${enabled ? "enabled" : "disabled"}');
+  }
+}
+
+// ✅ إضافة دالة للتحكم في رسائل FCM من خارج الخدمة:
+// في أي مكان في التطبيق:
+void toggleFcmDebug(bool enabled) {
+  FcmService.instance.setDebugMode(enabled);
+  
+  if (enabled) {
+    showInfoSnackBar('تم تفعيل وضع FCM Debug');
+  } else {
+    showInfoSnackBar('تم تعطيل وضع FCM Debug');
+    clearSnackBarQueue(); // مسح الرسائل المتبقية
   }
 }

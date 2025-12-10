@@ -151,7 +151,7 @@ class AuthenticationService {
       // Send FCM Token to backend after successful login
       _debugLog('Attempting to send FCM token to backend.');
       try {
-        await FcmService.instance.sendFcmTokenToBackend();
+     //   await FcmService.instance.sendFcmTokenToBackend();
         _debugLog('FCM token send process initiated.');
       } catch (e) {
         _debugLog('Sending FCM token failed (non-critical): $e');
@@ -170,7 +170,7 @@ class AuthenticationService {
       }
 
       // فحص حالة الاشتراك
-      final subscriptionManager = SubscriptionManager(context);
+      final subscriptionManager = SubscriptionManager();
       final subscriptionResponse = await subscriptionManager.checkSubscription();
 
       if (subscriptionResponse['subscribed'] == true) {

@@ -7,7 +7,8 @@ import 'package:flex_reminder/utils/connectivity_helper.dart';
 import 'package:flex_reminder/services/subscription_manager.dart';
 import 'package:flex_reminder/services/navigation_service.dart';
 import 'package:flex_reminder/services/authentication_service.dart';
-
+import 'package:flex_reminder/services/fcm_service.dart';
+import 'package:flex_reminder/globals.dart'; 
 class SplashMessage {
   final String message;
   final Color? color;
@@ -295,98 +296,114 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
-  Future<void> _handleAuthenticatedUser(AuthProvider authProvider,
-      {required bool isOffline}) async {
-    try {
-      final subscriptionManager = SubscriptionManager(context);
-      if (isOffline) {
-        _safeShowMessage(
-            '📱 Authenticated user in offline mode - going to reminders');
-        try {
-          final remindersNotifier = RemindersNotifier.instance;
-          await remindersNotifier.initializeOfflineMode();
-          _updateStatus('جاري تحميل التذكيرات المحفوظة...');
-        } catch (e) {
-          _safeShowMessage('⚠️ RemindersNotifier offline init failed: $e',
-              color: Colors.orange);
-          _updateStatus('جاري تحضير التذكيرات...');
-        }
-        await Future.delayed(const Duration(milliseconds: 500));
-        _updateStatus('الانتقال إلى التذكيرات...');
-        await Future.delayed(const Duration(milliseconds: 300));
-        _navigateToRoute('/reminders');
-      } else {
-        _safeShowMessage(
-            '🌐 Authenticated user online - checking subscription');
-        _updateStatus('التحقق من حالة الاشتراك...');
-        try {
-          final userId = authProvider.userId;
-          String? userIdStr;
-          if (userId != null) {
-            userIdStr = userId.toString();
-            _safeShowMessage('📋 Using user ID for subscription check: $userIdStr');
-          }
-
-          final subscriptionResponse =
-              await subscriptionManager.checkSubscription(userId: userIdStr);
-
-          if (subscriptionResponse['subscribed'] == true) {
-            _updateStatus('اشتراك مميز مفعل!');
-            await Future.delayed(const Duration(milliseconds: 500));
-            _navigateToRoute('/reminders');
-          } else {
-            _safeShowMessage(
-                '❌ User authenticated but no premium subscription found - logging out',
-                color: Colors.red);
-            _updateStatus('لا يوجد اشتراك مميز - إلغاء تسجيل الدخول...');
-
-            await _performLogoutViaAuthService();
-
-            await Future.delayed(const Duration(milliseconds: 1000));
-            _updateStatus('يجب الاشتراك أولاً للوصول للتطبيق...');
-            await Future.delayed(const Duration(milliseconds: 1000));
-            _updateStatus('إعادة توجيه لتسجيل الدخول...');
-            await Future.delayed(const Duration(milliseconds: 500));
-            _navigateToRoute('/auth');
-          }
-        } catch (subscriptionError) {
-          _safeShowMessage('❌ Subscription check failed: $subscriptionError',
-              color: Colors.red);
-
-          if (authProvider.isOfflineMode) {
-            _updateStatus('خطأ في الاتصال - استخدام البيانات المحفوظة...');
-            await Future.delayed(const Duration(milliseconds: 500));
-            _navigateToRoute('/reminders');
-          } else {
-            _safeShowMessage(
-                '❌ Subscription check failed online - logging out user',
-                color: Colors.red);
-            _updateStatus('فشل فحص الاشتراك - إلغاء تسجيل الدخول...');
-
-            await _performLogoutViaAuthService();
-            await Future.delayed(const Duration(milliseconds: 1000));
-            _updateStatus('إعادة توجيه لتسجيل الدخول...');
-            await Future.delayed(const Duration(milliseconds: 500));
-            _navigateToRoute('/auth');
-          }
-        }
-      }
-    } catch (e) {
-      _safeShowMessage('❌ Error handling authenticated user: $e',
-          color: Colors.red);
-
-      _updateStatus('حدث خطأ - إلغاء تسجيل الدخول للأمان...');
+  // في دالة _handleAuthenticatedUser
+Future<void> _handleAuthenticatedUser(AuthProvider authProvider, {required bool isOffline}) async {
+  try {
+    final subscriptionManager = SubscriptionManager();
+    if (isOffline) {
+      _safeShowMessage('📱 Authenticated user in offline mode - going to reminders');
       try {
-        await _performLogoutViaAuthService();
-        await Future.delayed(const Duration(milliseconds: 500));
-        _navigateToRoute('/auth');
-      } catch (logoutError) {
-        _safeShowMessage('❌ Emergency logout failed: $logoutError',
-            color: Colors.red);
-        _navigateToRoute('/reminders');
+        final remindersNotifier = RemindersNotifier.instance;
+        await remindersNotifier.initializeOfflineMode();
+        _updateStatus('جاري تحميل التذكيرات المحفوظة...');
+      } catch (e) {
+        _safeShowMessage('⚠️ RemindersNotifier offline init failed: $e', color: Colors.orange);
+        _updateStatus('جاري تحضير التذكيرات...');
+      }
+      await Future.delayed(const Duration(milliseconds: 500));
+      _updateStatus('الانتقال إلى التذكيرات...');
+      
+      // إرسال FCM token قبل الانتقال إلى صفحة reminders
+      try {
+        await FcmService.instance.sendFcmTokenToBackend();
+        _safeShowMessage('✅ تم إرسال FCM token');
+      } catch (e) {
+        _safeShowMessage('⚠️ فشل إرسال FCM token: $e', color: Colors.orange);
+      }
+      
+      await Future.delayed(const Duration(milliseconds: 300));
+      _navigateToRoute('/reminders');
+    } else {
+      _safeShowMessage('🌐 Authenticated user online - checking subscription');
+      _updateStatus('التحقق من حالة الاشتراك...');
+      try {
+        final userId = authProvider.userId;
+        String? userIdStr;
+        if (userId != null) {
+          userIdStr = userId.toString();
+          _safeShowMessage('📋 Using user ID for subscription check: $userIdStr');
+        }
+
+        final subscriptionResponse = await subscriptionManager.checkSubscription(userId: userIdStr);
+
+        if (subscriptionResponse['subscribed'] == true) {
+          _updateStatus('اشتراك مميز مفعل!');
+          await Future.delayed(const Duration(milliseconds: 500));
+          
+          // إرسال FCM token قبل الانتقال إلى صفحة reminders
+          try {
+            await FcmService.instance.sendFcmTokenToBackend();
+            _safeShowMessage('✅ تم إرسال FCM token');
+          } catch (e) {
+            _safeShowMessage('⚠️ فشل إرسال FCM token: $e', color: Colors.orange);
+          }
+          
+          _navigateToRoute('/reminders');
+        } else {
+          _safeShowMessage('❌ User authenticated but no premium subscription found - logging out', color: Colors.red);
+          _updateStatus('لا يوجد اشتراك مميز - إلغاء تسجيل الدخول...');
+
+          await _performLogoutViaAuthService();
+
+          await Future.delayed(const Duration(milliseconds: 1000));
+          _updateStatus('يجب الاشتراك أولاً للوصول للتطبيق...');
+          await Future.delayed(const Duration(milliseconds: 1000));
+          _updateStatus('إعادة توجيه لتسجيل الدخول...');
+          await Future.delayed(const Duration(milliseconds: 500));
+          _navigateToRoute('/auth');
+        }
+      } catch (subscriptionError) {
+        _safeShowMessage('❌ Subscription check failed: $subscriptionError', color: Colors.red);
+
+        if (authProvider.isOfflineMode) {
+          _updateStatus('خطأ في الاتصال - استخدام البيانات المحفوظة...');
+          
+          // إرسال FCM token قبل الانتقال إلى صفحة reminders
+          try {
+            await FcmService.instance.sendFcmTokenToBackend();
+            _safeShowMessage('✅ تم إرسال FCM token');
+          } catch (e) {
+            _safeShowMessage('⚠️ فشل إرسال FCM token: $e', color: Colors.orange);
+          }
+          
+          await Future.delayed(const Duration(milliseconds: 500));
+          _navigateToRoute('/reminders');
+        } else {
+          _safeShowMessage('❌ Subscription check failed online - logging out user', color: Colors.red);
+          _updateStatus('فشل فحص الاشتراك - إلغاء تسجيل الدخول...');
+
+          await _performLogoutViaAuthService();
+          await Future.delayed(const Duration(milliseconds: 1000));
+          _updateStatus('إعادة توجيه لتسجيل الدخول...');
+          await Future.delayed(const Duration(milliseconds: 500));
+          _navigateToRoute('/auth');
+        }
       }
     }
+  } catch (e) {
+    _safeShowMessage('❌ Error handling authenticated user: $e', color: Colors.red);
+
+    _updateStatus('حدث خطأ - إلغاء تسجيل الدخول للأمان...');
+    try {
+      await _performLogoutViaAuthService();
+      await Future.delayed(const Duration(milliseconds: 500));
+      _navigateToRoute('/auth');
+    } catch (logoutError) {
+      _safeShowMessage('❌ Emergency logout failed: $logoutError', color: Colors.red);
+      _navigateToRoute('/reminders');
+    }
   }
+}
 
   Future<void> _performLogoutViaAuthService() async {
     try {

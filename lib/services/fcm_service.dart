@@ -12,6 +12,7 @@ import 'package:flex_reminder/globals.dart';
 import 'package:flex_reminder/providers/reminders_notifier.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../utils/consts.dart';
+import 'package:flex_reminder/services/subscription_manager.dart';
 
 class FcmService {
   // Singleton instance
@@ -275,7 +276,7 @@ class FcmService {
       // إرسال Token للباك إند (لا تفشل التهيئة إذا فشل)
       try {
         if (fcmToken != null) {
-          await sendFcmTokenToBackend();
+     //     await sendFcmTokenToBackend();
         }
       } catch (e) {
         debugPrint('⚠️ Failed to send token to backend: $e');
@@ -315,127 +316,102 @@ class FcmService {
     }
   }
 
-  // ✅ تحديث processMessage لتقليل الرسائل
-  Future<void> processMessage(RemoteMessage message, {required bool isBackground}) async {
-      _fcmDebugLog('PROCESS', 'Starting message processing', data: {
-        'background': isBackground,
-        'messageId': message.messageId,
-        'dataKeys': message.data.keys.toList(),
-      });
-      
-      // استخدام دالة التحميل
-      await showLoadingSnackBar('جاري معالجة الرسالة...');
-      
+ Future<void> processMessage(RemoteMessage message, {required bool isBackground}) async {
     try {
-    
       if (!_isInitialized) {
-        _fcmDebugLog('PROCESS', 'FCM not initialized - attempting init');
-        debugPrint('⚠️ FCM not initialized');
         await init();
       }
       
-      _fcmDebugLog('PROCESS', 'Extracting message data...');
       final data = Map<String, dynamic>.from(message.data);
-      final title = data['title']?.toString() ?? data['post_title']?.toString() ?? 'تذكير';
-      final body = data['body']?.toString() ?? data['next_reminder_time']?.toString() ?? '';
-      final postId = data['post_id']?.toString() ?? '';
       
-      _fcmDebugLog('PROCESS', 'Data extracted', data: {
-        'title': title,
-        'body': body,
-        'postId': postId,
-      });
+      // استخراج title و body من الإشعار
+      final title = message.notification?.title ?? data['title']?.toString() ?? '';
+      final body = message.notification?.body ?? data['body']?.toString() ?? '';
+      final type = data['type']?.toString() ?? '';
       
-      debugPrint('📋 Title: $title');
-      debugPrint('📋 PostID: $postId');
-      
-      final int? reminderId = postId.isNotEmpty ? int.tryParse(postId) : null;
-      final msgId = message.messageId ?? 'msg_${DateTime.now().millisecondsSinceEpoch}';
-      
-      _fcmDebugLog('PROCESS', 'Checking for duplicates...', data: {
-        'messageId': msgId,
-        'reminderId': reminderId,
-      });
-      
-      // فحص التكرار
-      if (_isDuplicateMessage(msgId)) {
-        _fcmDebugLog('PROCESS', 'DUPLICATE DETECTED - Skipping');
-        debugPrint('⏭️ Duplicate ignored');
-        return;
-      }
-
-      _fcmDebugLog('PROCESS', 'Message is new - proceeding');
-
-      // عرض إشعار في المقدمة فقط
-      if (!isBackground && title.isNotEmpty) {
-        _fcmDebugLog('PROCESS', 'Showing foreground notification...');
+      // عرض الإشعار للمستخدم كما وصل
+      if (title.isNotEmpty || body.isNotEmpty) {
         _showFcmNotificationSnackBar(title, body);
-        _fcmDebugLog('PROCESS', '✓ Notification shown');
-      }
-
-      // معالجة الإشعارات
-      if (reminderId == null || reminderId <= 0) {
-        _fcmDebugLog('PROCESS', 'No valid reminder ID - handling as general notification');
-        await _handleGeneralNotification(title, body, data, isBackground);
-        _fcmDebugLog('PROCESS', '✓ General notification handled');
-        return;
-      }
-
-      _fcmDebugLog('PROCESS', 'Checking if reminder should be processed...', data: {
-        'reminderId': reminderId,
-      });
-
-      if (!_shouldProcessReminder(reminderId)) {
-        _fcmDebugLog('PROCESS', 'Reminder processing delayed (rate limit)');
-        debugPrint('⏭️ Reminder delayed');
-        return;
-      }
-
-      // معالجة التذكير
-      String action = data['action']?.toString().trim() ?? '';
-      
-      // إذا كانت action فارغة، نحاول استنتاجها من البيانات
-      if (action.isEmpty) {
-        debugPrint('🟠 [processMessage] action is empty, inferring from data...');
-        // تحقق من وجود operation كبديل
-        action = data['operation']?.toString().trim() ?? '';
-        
-        // إذا لا يزال فارغًا، استخدم "update" كقيمة افتراضية
-        if (action.isEmpty) {
-          action = 'update';
-          debugPrint('🟠 [processMessage] Using default action: $action');
-        }
       }
       
-      _fcmDebugLog('PROCESS', 'Processing reminder operation...', data: {
-        'action': action,
-        'reminderId': reminderId,
-      });
+       // التحقق من نوع الرسالة ومعالجتها حسب النوع
+    if (type == 'reminder_update') {
+      // معالجة رسالة تحديث التذكير
+      _safeShowMessage('🔄 Processing reminder update', color: Colors.blue);
+      await RemindersNotifier.instance.handleFcmData(data);
+      return;
+    }
+    
+    // التحقق إذا كانت رسالة تحديث اشتراك
+    if (type == 'subscription_update') {
+      // معالجة رسالة تحديث الاشتراك
+      _safeShowMessage('💳 Processing subscription update', color: Colors.purple);
+       await SubscriptionManager().handleSubscriptionUpdateNotification(data);
+      return;
+    }
       
-      await _processReminderOperation(action, reminderId, isBackground, data);
-      
-      _fcmDebugLog('PROCESS', '✅ Message processing COMPLETE');
-      debugPrint('✅ Message processed');
-      
-      // في النهاية
-      await showSuccessSnackBar('تمت معالجة الرسالة');
+      // باقي الكود الحالي لمعالجة الرسائل الأخرى...
       
     } catch (e, s) {
-      _fcmDebugLog('PROCESS', '❌ EXCEPTION: $e');
-      print('🔴 Error: $e\n$s');
       debugPrint('❌ Process error: $e');
-      
-      await showErrorSnackBar('خطأ في معالجة الرسالة');
-      
-      // إشعار احتياطي
-      try {
-        final title = message.data['post_title']?.toString() ?? 'تذكير';
-        final body = message.data['next_reminder_time']?.toString() ?? '';
-        await _sendGenericNotification(title, body.isNotEmpty ? 'موعد: $body' : 'تذكير', message.data);
-      } catch (_) {}
     }
-  }
+}
 
+
+void _showSubscriptionUpdateNotification(String userId, String eventType, String status) {
+  String title = "User: $userId";
+  String body = "Event: $eventType";
+  
+  // إضافة وصف للحدث
+ String eventDescription = SubscriptionManager().getEventDescription(eventType);
+  if (eventDescription.isNotEmpty) {
+    body += "\n$eventDescription";
+  }
+  
+  // إضافة الحالة
+  body += "\nStatus: $status";
+  
+  _showFcmNotificationSnackBar(title, body);
+}
+
+// دالة جديدة لعرض إشعار مفصل
+void _showDetailedSubscriptionNotification(String userId, String eventType, String status) {
+  String title = "User: $userId";
+  String body = "Event: $eventType";
+  
+  // إضافة وصف للحدث
+  String eventDescription = _getEventDescription(eventType);
+  if (eventDescription.isNotEmpty) {
+    body += "\n$eventDescription";
+  }
+  
+  // إضافة الحالة
+  body += "\nStatus: $status";
+  
+  _showFcmNotificationSnackBar(title, body);
+}
+
+// دالة مساعدة لوصف الأحداث
+String _getEventDescription(String eventType) {
+  switch (eventType) {
+    case 'INITIAL_PURCHASE':
+      return 'تم تفعيل اشتراك جديد';
+    case 'RENEWAL':
+      return 'تم تجديد الاشتراك';
+    case 'CANCELLATION':
+      return 'تم إلغاء الاشتراك';
+    case 'UNCANCELLATION':
+      return 'تم استعادة الاشتراك';
+    case 'EXPIRATION':
+      return 'انتهت صلاحية الاشتراك';
+    case 'BILLING_ISSUE':
+      return 'مشكلة في الدفع';
+    case 'PRODUCT_CHANGE':
+      return 'تم تغيير خطة الاشتراك';
+    default:
+      return 'تحديث في الاشتراك';
+  }
+}
   // ✅ دالة عرض إشعارات FCM (تبقى static) - تم تحديثها حسب التعديلات
   static void _showFcmNotificationSnackBar(String title, String body) {
     if (title.isEmpty && body.isEmpty) return;
@@ -515,7 +491,7 @@ class FcmService {
   // ============================================================================
   Future<void> _processReminderOperation(
     String action, int reminderId, bool isBackground, Map<String, dynamic> data) async {
-  try {
+   try {
     debugPrint('🔵 [_processReminderOperation] === STARTED ===');
     debugPrint('🔵 [_processReminderOperation] action="$action", reminderId=$reminderId, isBackground=$isBackground');
     debugPrint('🔵 [_processReminderOperation] data keys: ${data.keys.toList()}');
@@ -533,7 +509,7 @@ class FcmService {
     debugPrint('🔵 [_processReminderOperation] handleFcmData completed successfully');
     
     await showSuccessSnackBar('تمت معالجة التذكير');
-  } catch (e, s) {
+   } catch (e, s) {
     debugPrint('🔴 [_processReminderOperation] ERROR: $e');
     debugPrint('🔴 [_processReminderOperation] Stack: $s');
     

@@ -1,5 +1,7 @@
 import 'dart:collection';
+import 'dart:async';  // ✅ إضافة هذا السطر
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ============================================================================
 // Global keys for navigation and scaffold messenger
@@ -20,7 +22,19 @@ String? _initializationError;
 // ============================================================================
 // متغير وضع Debug لتفعيل/تعطيل رسائل SnackBar
 // ============================================================================
-bool _isDebugMode = false;
+bool _isDebugMode = true;
+
+// ============================================================================
+// متغيرات حالة الاشتراك المحفوظة (للقراءة فقط)
+// ============================================================================
+String _subscriptionUserId = '';
+String _subscriptionEventType = '';
+String _subscriptionStatus = '';
+int _subscriptionUpdateTimestamp = 0;
+
+// Stream controller لإعلام المستمعين بتغييرات الاشتراك
+final StreamController<Map<String, dynamic>> _subscriptionStatusController = 
+    StreamController<Map<String, dynamic>>.broadcast();
 
 // ============================================================================
 // Getters and Setters for Debug Mode
@@ -28,9 +42,7 @@ bool _isDebugMode = false;
 bool get isDebugMode => _isDebugMode;
 set isDebugMode(bool value) {
   _isDebugMode = value;
-  debugPrint('🐛 وضع Debug ${value ? "مُفعّل" : "مُعطّل"}');
   if (!value) {
-    // مسح قائمة الانتظار عند تعطيل وضع Debug
     clearSnackBarQueue();
   }
 }
@@ -59,7 +71,6 @@ set isRevenueCatInitialized(bool value) => _isRevenueCatInitialized = value;
 bool get isRemindersNotifierInitialized => _isRemindersNotifierInitialized;
 set isRemindersNotifierInitialized(bool value) {
   _isRemindersNotifierInitialized = value;
-  debugPrint('🔔 RemindersNotifier initialized state: $value');
 }
 
 // ============================================================================
@@ -69,30 +80,108 @@ String? get initializationError => _initializationError;
 set initializationError(String? value) => _initializationError = value;
 
 // ============================================================================
+// Getters for Subscription Data (Read Only)
+// ============================================================================
+String get subscriptionUserId => _subscriptionUserId;
+String get subscriptionEventType => _subscriptionEventType;
+String get subscriptionStatus => _subscriptionStatus;
+int get subscriptionUpdateTimestamp => _subscriptionUpdateTimestamp;
+
+// Stream getter for subscription status changes
+Stream<Map<String, dynamic>> get subscriptionStatusStream => 
+    _subscriptionStatusController.stream;
+
+// ============================================================================
+// دوال بيانات الاشتراك (للقراءة فقط من SharedPreferences)
+// ============================================================================
+
+/// تحميل بيانات الاشتراك من التخزين المحلي فقط
+Future<void> loadSubscriptionData() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    
+    _subscriptionUserId = prefs.getString('subscription_user_id') ?? '';
+    _subscriptionEventType = prefs.getString('subscription_event_type') ?? '';
+    
+    // قراءة الحالة من bool المحفوظ
+    bool isActive = prefs.getBool('subscription_status') ?? false;
+    _subscriptionStatus = isActive ? 'active' : 'inactive';
+    
+    _subscriptionUpdateTimestamp = prefs.getInt('subscription_timestamp') ?? 0;
+    
+    // إعلام المستمعين بالبيانات المحملة
+    if (!_subscriptionStatusController.isClosed) {
+      _subscriptionStatusController.add(getSubscriptionDataMap());
+    }
+  } catch (e) {
+    // تجاهل الأخطاء
+  }
+}
+
+/// الحصول على بيانات الاشتراك كخريطة
+Map<String, dynamic> getSubscriptionDataMap() {
+  return {
+    'userId': _subscriptionUserId,
+    'eventType': _subscriptionEventType,
+    'status': _subscriptionStatus,
+    'updateTimestamp': _subscriptionUpdateTimestamp,
+  };
+}
+
+/// التحقق مما إذا كان الاشتراك نشطاً
+bool isSubscriptionActive() {
+  return _subscriptionStatus.toLowerCase() == 'active';
+}
+
+/// التحقق مما إذا كانت بيانات الاشتراك متاحة
+bool hasSubscriptionData() {
+  return _subscriptionUserId.isNotEmpty && _subscriptionUpdateTimestamp > 0;
+}
+
+/// الحصول على وصف الحدث
+String getSubscriptionEventDescription() {
+  switch (_subscriptionEventType.toLowerCase()) {
+    case 'initial_purchase':
+      return 'تم تفعيل اشتراك جديد';
+    case 'renewal':
+      return 'تم تجديد الاشتراك';
+    case 'cancellation':
+      return 'تم إلغاء الاشتراك';
+    case 'uncancellation':
+      return 'تم استعادة الاشتراك';
+    case 'expiration':
+      return 'انتهت صلاحية الاشتراك';
+    case 'billing_issue':
+      return 'مشكلة في الدفع';
+    case 'product_change':
+      return 'تم تغيير خطة الاشتراك';
+    case 'revenuecat_check':
+      return 'فحص من RevenueCat';
+    case 'restore_purchase':
+      return 'استعادة المشتريات';
+    default:
+      return 'تحديث في الاشتراك';
+  }
+}
+
+// ============================================================================
 // نظام SnackBar المحسّن مع قائمة الانتظار
 // ============================================================================
 
 class _SnackBarQueueManager {
-  // Singleton pattern
   static final _SnackBarQueueManager _instance = _SnackBarQueueManager._internal();
   factory _SnackBarQueueManager() => _instance;
   _SnackBarQueueManager._internal();
 
-  // قائمة انتظار الرسائل
   final Queue<_SnackBarMessage> _queue = Queue<_SnackBarMessage>();
-  
-  // حالة المعالجة
   bool _isProcessing = false;
   
-  // إضافة رسالة إلى قائمة الانتظار
   void addMessage({
     required String message,
     Color backgroundColor = Colors.blue,
     Duration duration = const Duration(milliseconds: 1500),
   }) {
-    // التحقق من وضع Debug
     if (!_isDebugMode) {
-      debugPrint('🐛 وضع Debug معطّل - تم تجاهل رسالة: $message');
       return;
     }
 
@@ -103,13 +192,11 @@ class _SnackBarQueueManager {
       timestamp: DateTime.now(),
     ));
 
-    // بدء المعالجة إذا لم تكن قد بدأت
     if (!_isProcessing) {
       _processQueue();
     }
   }
 
-  // معالجة قائمة الانتظار
   Future<void> _processQueue() async {
     if (_queue.isEmpty) {
       _isProcessing = false;
@@ -119,11 +206,9 @@ class _SnackBarQueueManager {
     _isProcessing = true;
 
     while (_queue.isNotEmpty) {
-      // التحقق من وضع Debug أثناء المعالجة
       if (!_isDebugMode) {
         _queue.clear();
         _isProcessing = false;
-        debugPrint('🐛 تم إيقاف معالجة الرسائل - وضع Debug معطّل');
         return;
       }
 
@@ -132,13 +217,10 @@ class _SnackBarQueueManager {
       try {
         await _displaySnackBar(message);
         
-        // انتظار قصير بين الرسائل لتجنب التكدس (200ms)
         if (_queue.isNotEmpty) {
           await Future.delayed(const Duration(milliseconds: 200));
         }
       } catch (e) {
-        debugPrint('❌ خطأ في عرض SnackBar: $e');
-        // الاستمرار في معالجة الرسائل التالية حتى لو حدث خطأ
         continue;
       }
     }
@@ -146,21 +228,17 @@ class _SnackBarQueueManager {
     _isProcessing = false;
   }
 
-  // عرض SnackBar واحد
   Future<void> _displaySnackBar(_SnackBarMessage message) async {
     try {
       final messenger = scaffoldMessengerKey.currentState;
       
       if (messenger == null || !messenger.mounted) {
-        debugPrint('⚠️ ScaffoldMessenger غير متاح: ${message.message}');
         return;
       }
 
-      // إزالة أي SnackBar سابق
       messenger.clearSnackBars();
 
-      // عرض SnackBar الجديد
-      final controller = messenger.showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
           content: Text(
             message.message,
@@ -179,38 +257,21 @@ class _SnackBarQueueManager {
           dismissDirection: DismissDirection.horizontal,
         ),
       );
-
-      // انتظار حتى يتم إخفاء SnackBar أو مدة أقصاها
-      await controller.closed.timeout(
-        message.duration + const Duration(milliseconds: 500),
-        onTimeout: () => SnackBarClosedReason.timeout,
-      );
-
-      debugPrint('📱 تم عرض SnackBar: ${message.message}');
     } catch (e) {
-      debugPrint('❌ خطأ في _displaySnackBar: $e');
-      rethrow;
+      // تجاهل الأخطاء
     }
   }
 
-  // مسح قائمة الانتظار
   void clearQueue() {
     _queue.clear();
     _isProcessing = false;
-    debugPrint('🗑️ تم مسح قائمة انتظار SnackBar');
   }
 
-  // الحصول على عدد الرسائل في قائمة الانتظار
   int get queueLength => _queue.length;
-
-  // التحقق من وجود رسائل في قائمة الانتظار
   bool get hasMessages => _queue.isNotEmpty;
-
-  // التحقق من حالة المعالجة
   bool get isProcessing => _isProcessing;
 }
 
-// كلاس لتخزين بيانات الرسالة
 class _SnackBarMessage {
   final String message;
   final Color backgroundColor;
@@ -223,49 +284,31 @@ class _SnackBarMessage {
     required this.duration,
     required this.timestamp,
   });
-
-  @override
-  String toString() {
-    return 'SnackBarMessage(message: $message, timestamp: $timestamp)';
-  }
 }
 
 // ============================================================================
-// دالة موحدة لعرض SnackBar من أي مكان في التطبيق
+// دالة موحدة لعرض SnackBar
 // ============================================================================
 
-/// عرض SnackBar باستخدام نظام قائمة الانتظار المحسّن
-/// 
-/// هذه الدالة تضمن عرض جميع الرسائل بالتسلسل دون تكدس
-/// ملاحظة: يتطلب تفعيل وضع Debug (isDebugMode = true) لعرض الرسائل
-/// 
-/// Parameters:
-/// - [message]: النص المراد عرضه
-/// - [backgroundColor]: لون الخلفية (افتراضي: أزرق)
-/// - [duration]: مدة العرض (افتراضي: 1.5 ثانية)
 Future<void> showGlobalSnackBar(
   String message, {
   Color backgroundColor = Colors.blue,
   Duration duration = const Duration(milliseconds: 1500),
 }) async {
   try {
-    // التحقق من وضع Debug
     if (!_isDebugMode) {
-      debugPrint('🐛 وضع Debug معطّل - لن يتم عرض: $message');
       return;
     }
 
-    // إضافة الرسالة إلى قائمة الانتظار
     _SnackBarQueueManager().addMessage(
       message: message,
       backgroundColor: backgroundColor,
       duration: duration,
     );
 
-    // انتظار قصير جداً للسماح بالمعالجة
     await Future.delayed(const Duration(milliseconds: 50));
   } catch (e) {
-    debugPrint('❌ خطأ في showGlobalSnackBar: $e');
+    // تجاهل الأخطاء
   }
 }
 
@@ -273,22 +316,18 @@ Future<void> showGlobalSnackBar(
 // دوال إضافية لإدارة قائمة الانتظار
 // ============================================================================
 
-/// مسح جميع الرسائل في قائمة الانتظار
 void clearSnackBarQueue() {
   _SnackBarQueueManager().clearQueue();
 }
 
-/// الحصول على عدد الرسائل في قائمة الانتظار
 int getSnackBarQueueLength() {
   return _SnackBarQueueManager().queueLength;
 }
 
-/// التحقق من وجود رسائل في قائمة الانتظار
 bool hasSnackBarMessages() {
   return _SnackBarQueueManager().hasMessages;
 }
 
-/// التحقق من حالة معالجة الرسائل
 bool isSnackBarProcessing() {
   return _SnackBarQueueManager().isProcessing;
 }
@@ -297,27 +336,22 @@ bool isSnackBarProcessing() {
 // دوال مساعدة سريعة لعرض رسائل ملونة
 // ============================================================================
 
-/// عرض رسالة نجاح (خضراء)
 Future<void> showSuccessSnackBar(String message) async {
   await showGlobalSnackBar('✅ $message', backgroundColor: Colors.green);
 }
 
-/// عرض رسالة خطأ (حمراء)
 Future<void> showErrorSnackBar(String message) async {
   await showGlobalSnackBar('❌ $message', backgroundColor: Colors.red);
 }
 
-/// عرض رسالة تحذير (برتقالية)
 Future<void> showWarningSnackBar(String message) async {
   await showGlobalSnackBar('⚠️ $message', backgroundColor: Colors.orange);
 }
 
-/// عرض رسالة معلومات (زرقاء)
 Future<void> showInfoSnackBar(String message) async {
   await showGlobalSnackBar('ℹ️ $message', backgroundColor: Colors.blue);
 }
 
-/// عرض رسالة تحميل (رمادية مزرقة)
 Future<void> showLoadingSnackBar(String message) async {
   await showGlobalSnackBar('🔄 $message', backgroundColor: Colors.blueGrey);
 }
@@ -330,19 +364,6 @@ bool get areAllServicesInitialized =>
     _isFcmInitialized &&
     _isRemindersNotifierInitialized;
 
-/// طباعة حالة جميع الخدمات
 void printServicesStatus() {
-  debugPrint('═══════════════════════════════════════════');
-  debugPrint('📊 حالة الخدمات:');
-  debugPrint('   Firebase: ${_isFirebaseInitialized ? "✅" : "❌"}');
-  debugPrint('   FCM: ${_isFcmInitialized ? "✅" : "❌"}');
-  debugPrint('   RevenueCat: ${_isRevenueCatInitialized ? "✅" : "❌"}');
-  debugPrint('   RemindersNotifier: ${_isRemindersNotifierInitialized ? "✅" : "❌"}');
-  debugPrint('   🐛 وضع Debug: ${_isDebugMode ? "مُفعّل" : "مُعطّل"}');
-  if (_initializationError != null) {
-    debugPrint('   ⚠️ خطأ: $_initializationError');
-  }
-  debugPrint('   📬 قائمة SnackBar: ${getSnackBarQueueLength()} رسالة');
-  debugPrint('   ⚙️ معالجة SnackBar: ${isSnackBarProcessing() ? "نشط" : "متوقف"}');
-  debugPrint('═══════════════════════════════════════════');
+  // تم إزالة جميع رسائل الطباعة
 }

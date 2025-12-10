@@ -88,7 +88,7 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen>
         final hasInternet =
             await ConnectivityHelper.checkInternetConnection(verbose: true);
         if (hasInternet) {
-          final subscriptionManager = SubscriptionManager(context);
+          final subscriptionManager = SubscriptionManager();
           final subscriptionResponse = await subscriptionManager.checkSubscription();
           if (subscriptionResponse['subscribed'] == true) {
             _showSuccessSnackBar('⭐ Premium subscription active!');

@@ -9,6 +9,7 @@ import '../services/api_service.dart';
 import 'package:flex_reminder/globals.dart';
 import 'package:flex_reminder/utils/connectivity_helper.dart';
 import 'package:flex_reminder/services/fcm_service.dart';
+import 'package:flex_reminder/services/subscription_manager.dart';
 
 class AuthProvider with ChangeNotifier {
   static AuthProvider? _instance;
@@ -29,6 +30,7 @@ class AuthProvider with ChangeNotifier {
   late final GoogleSignIn _googleSignIn;
   StreamSubscription<GoogleSignInAuthenticationEvent>? _authEventSubscription;
   bool _isAuthenticated = false;
+  bool _previousIsAuthenticated = false; // متغير لتتبع الحالة السابقة
   bool _isLoading = false;
   String? _errorMessage;
   int? _userId;
@@ -42,6 +44,7 @@ class AuthProvider with ChangeNotifier {
   bool _isGoogleSignInLoading = false;
   GoogleSignInAccount? _googleUser;
   bool _isGoogleAuthorized = false;
+  SubscriptionManager? _subscriptionManager;
 
   bool get isAuthenticated => _isAuthenticated;
   bool get isLoading => _isLoading;
@@ -59,6 +62,32 @@ class AuthProvider with ChangeNotifier {
   bool get isGoogleAuthorized => _isGoogleAuthorized;
 
   @override
+  void notifyListeners() {
+    // التحقق مما إذا كانت قيمة _isAuthenticated قد تغيرت إلى true
+    if (_isAuthenticated ) {
+      // إرسال FCM token إلى الخادم
+      _sendFcmTokenToBackend();
+    }
+    
+    // تحديث الحالة السابقة
+    _previousIsAuthenticated = _isAuthenticated;
+    
+    // استدعاء notifyListeners() الأصلي
+    super.notifyListeners();
+  }
+  
+  // دالة مساعدة لإرسال FCM token
+  Future<void> _sendFcmTokenToBackend() async {
+    try {
+      _safeShowMessage('🔄 إرسال FCM token إلى الخادم...');
+      await FcmService.instance.sendFcmTokenToBackend();
+      _safeShowMessage('✅ تم إرسال FCM token بنجاح');
+    } catch (e) {
+      _safeShowMessage('⚠️ فشل إرسال FCM token: $e');
+    }
+  }
+
+  @override
   void dispose() {
     _authEventSubscription?.cancel();
     super.dispose();
@@ -66,11 +95,11 @@ class AuthProvider with ChangeNotifier {
 
   // New method to get current user ID
   int? getCurrentUserId() {
-    if (_isAuthenticated && _userId != null) {
+    if (_userId != null) {
       _safeShowMessage('✅ Retrieved current user ID: $_userId');
       return _userId;
     } else {
-      _safeShowMessage('❌ No authenticated user found');
+      _safeShowMessage('❌ No user ID found');
       return null;
     }
   }
@@ -156,7 +185,6 @@ class AuthProvider with ChangeNotifier {
         if (hasInternet) {
           try {
             final isValid = await _apiService.checkTokenValidity();
-            _isAuthenticated = isValid;
             _isOfflineMode = false;
             if (isValid) {
               _safeShowMessage('✅ Token is valid online');
@@ -166,6 +194,9 @@ class AuthProvider with ChangeNotifier {
               if (_userId != null && _isActivated) {
                 _safeShowMessage(
                     '💎 User initialized, Activated: $_isActivated');
+                
+                // Check subscription status to determine authentication
+                await _checkSubscriptionAndSetAuthStatus();
               } else {
                 _safeShowMessage(
                     '❌ Account not activated or incomplete data, clearing all data...');
@@ -203,6 +234,29 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  // New method to check subscription and set authentication status
+  Future<void> _checkSubscriptionAndSetAuthStatus() async {
+    try {
+      final userIdStr = _userId?.toString();
+      if (userIdStr != null) {
+        _subscriptionManager = SubscriptionManager();
+        final subscriptionResponse = await _subscriptionManager!.checkSubscription(userId: userIdStr);
+        
+        // Set authentication status based exclusively on subscription check
+        _isAuthenticated = subscriptionResponse['subscribed'] == true;
+        
+        _safeShowMessage('🔍 Subscription check result: ${subscriptionResponse['subscribed']}');
+        _safeShowMessage('🔐 Authentication status set to: $_isAuthenticated');
+      } else {
+        _safeShowMessage('❌ User ID is null, cannot check subscription');
+        _isAuthenticated = false;
+      }
+    } catch (e) {
+      _safeShowMessage('❌ Error checking subscription: $e');
+      _isAuthenticated = false;
+    }
+  }
+
   Future<void> _handleOfflineAuthentication(String token) async {
     if (token.isNotEmpty) {
       _userId = await getUserId();
@@ -216,10 +270,12 @@ class AuthProvider with ChangeNotifier {
         _isOfflineMode = false;
         return;
       }
-      _isAuthenticated = true;
+      
+      // In offline mode, we can't check subscription, so set isAuthenticated to false
+      _isAuthenticated = false;
       _isOfflineMode = true;
       _safeShowMessage(
-          '✅ Offline authentication accepted with activated account');
+          '✅ Offline authentication accepted but subscription cannot be verified');
     } else {
       _isAuthenticated = false;
       _isOfflineMode = true;
@@ -322,15 +378,10 @@ class AuthProvider with ChangeNotifier {
         if (_isActivated) {
           await setToken(userData['access_token']);
           await setUserId(userData['user']['id']);
-          _isAuthenticated = true;
           _isOfflineMode = false;
           
-          // ✅ إرسال FCM token قبل أي شيء آخر
-          try {
-            await FcmService.instance.sendFcmTokenToBackend();
-          } catch (e) {
-            _safeShowMessage('⚠️ FCM token send failed: $e');
-          }
+          // Check subscription status to determine authentication
+          await _checkSubscriptionAndSetAuthStatus();
           
           _safeShowMessage('✅ Login successful, Activated: $_isActivated');
           return {'success': true, 'activated': true, 'userData': userData};
@@ -555,18 +606,10 @@ class AuthProvider with ChangeNotifier {
           await setUserId(userId);
           _firebaseUid = firebaseUser.uid;
           await setFirebaseUid(_firebaseUid!);
-          _isAuthenticated = true;
           _isOfflineMode = false;
-
-          // ✅ إرسال FCM token قبل أي شيء آخر
-          try {
-            _safeShowMessage('🔄 Sending FCM token to backend...');
-            await FcmService.instance.sendFcmTokenToBackend();
-            _safeShowMessage('✅ FCM token sent successfully');
-          } catch (e) {
-            _safeShowMessage('⚠️ FCM token send failed: $e');
-            // لا تفشل عملية تسجيل الدخول بسبب FCM
-          }
+          
+          // Check subscription status to determine authentication
+          await _checkSubscriptionAndSetAuthStatus();
 
           _safeShowMessage('✅ Successfully signed in with Google');
           return {'success': true, 'activated': true, 'userData': userData};
@@ -821,8 +864,10 @@ class AuthProvider with ChangeNotifier {
         _requiresVerification = false;
         _pendingVerificationEmail = null;
         _isActivated = true;
-        _isAuthenticated = true;
-        await FcmService.instance.sendFcmTokenToBackend();
+        
+        // Check subscription status to determine authentication
+        await _checkSubscriptionAndSetAuthStatus();
+        
         _safeShowMessage('✅ Email verified successfully for $email');
         return {'success': true};
       } else {
@@ -837,23 +882,25 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
     }
   }
-// ✅ دالة لإعادة محاولة إرسال FCM token
-Future<void> retryFcmTokenSend({int maxRetries = 3}) async {
-  for (int i = 0; i < maxRetries; i++) {
-    try {
-      _safeShowMessage('🔄 Retry FCM token send attempt ${i + 1}/$maxRetries');
-      await FcmService.instance.sendFcmTokenToBackend();
-      _safeShowMessage('✅ FCM token sent successfully on retry');
-      return;
-    } catch (e) {
-      _safeShowMessage('❌ Retry $i failed: $e');
-      if (i < maxRetries - 1) {
-        await Future.delayed(Duration(seconds: (i + 1) * 2));
+  
+  // ✅ دالة لإعادة محاولة إرسال FCM token
+  Future<void> retryFcmTokenSend({int maxRetries = 3}) async {
+    for (int i = 0; i < maxRetries; i++) {
+      try {
+        _safeShowMessage('🔄 Retry FCM token send attempt ${i + 1}/$maxRetries');
+        await FcmService.instance.sendFcmTokenToBackend();
+        _safeShowMessage('✅ FCM token sent successfully on retry');
+        return;
+      } catch (e) {
+        _safeShowMessage('❌ Retry $i failed: $e');
+        if (i < maxRetries - 1) {
+          await Future.delayed(Duration(seconds: (i + 1) * 2));
+        }
       }
     }
+    _safeShowMessage('❌ All FCM token retry attempts failed');
   }
-  _safeShowMessage('❌ All FCM token retry attempts failed');
-}
+  
   Future<Map<String, dynamic>> resendVerificationCode(String email) async {
     try {
       _isLoading = true;
@@ -941,5 +988,12 @@ Future<void> retryFcmTokenSend({int maxRetries = 3}) async {
   void setState(VoidCallback fn) {
     fn();
     notifyListeners();
+  }
+  
+  // Method to refresh subscription status
+  Future<void> refreshSubscriptionStatus() async {
+    if (_userId != null) {
+      await _checkSubscriptionAndSetAuthStatus();
+    }
   }
 }

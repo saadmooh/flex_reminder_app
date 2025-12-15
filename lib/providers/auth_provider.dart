@@ -11,6 +11,7 @@ import 'package:flex_reminder/utils/connectivity_helper.dart';
 import 'package:flex_reminder/services/fcm_service.dart';
 import 'package:flex_reminder/services/subscription_manager.dart';
 
+
 class AuthProvider with ChangeNotifier {
   static AuthProvider? _instance;
   static AuthProvider get instance {
@@ -45,6 +46,7 @@ class AuthProvider with ChangeNotifier {
   GoogleSignInAccount? _googleUser;
   bool _isGoogleAuthorized = false;
   SubscriptionManager? _subscriptionManager;
+  bool _previousSubscriptionStatus = false; // متغير لتتبع حالة الاشتراك السابقة
 
   bool get isAuthenticated => _isAuthenticated;
   bool get isLoading => _isLoading;
@@ -197,6 +199,7 @@ class AuthProvider with ChangeNotifier {
                 
                 // Check subscription status to determine authentication
                 await _checkSubscriptionAndSetAuthStatus();
+                
               } else {
                 _safeShowMessage(
                     '❌ Account not activated or incomplete data, clearing all data...');
@@ -242,8 +245,19 @@ class AuthProvider with ChangeNotifier {
         _subscriptionManager = SubscriptionManager();
         final subscriptionResponse = await _subscriptionManager!.checkSubscription(userId: userIdStr);
         
+        // Get current subscription status
+        final currentSubscriptionStatus = subscriptionResponse['subscribed'] == true;
+        
         // Set authentication status based exclusively on subscription check
-        _isAuthenticated = subscriptionResponse['subscribed'] == true;
+        _isAuthenticated = currentSubscriptionStatus;
+        
+        // Show notification if subscription is active and it wasn't active before
+        if (currentSubscriptionStatus && !_previousSubscriptionStatus) {
+          _showSubscriptionActiveNotification();
+        }
+        
+        // Update previous subscription status
+        _previousSubscriptionStatus = currentSubscriptionStatus;
         
         _safeShowMessage('🔍 Subscription check result: ${subscriptionResponse['subscribed']}');
         _safeShowMessage('🔐 Authentication status set to: $_isAuthenticated');
@@ -257,6 +271,32 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+ // Method to show notification when subscription is active
+void _showSubscriptionActiveNotification() {
+  showGlobalSnackBar(
+    'تم تفعيل اشتراكك بنجاح! يمكنك الآن استخدام جميع الميزات المميزة.',
+    backgroundColor: Colors.green,
+    duration: const Duration(seconds: 5),
+  );
+}
+// دالة خاصة لتهيئة FCM وإرسال التوكن بعد نجاح تسجيل الدخول
+  Future<void> _finalizeAuthenticationFlow() async {
+    try {
+      _safeShowMessage('🔗 Finalizing authentication flow...');
+      
+      // 1. التأكد من أن FCM Service مهيأة
+      if (!FcmService.instance.isInitialized) {
+         _safeShowMessage('🔄 Initializing FCM Service explicitly...');
+         await FcmService.instance.init();
+      }
+      
+      // 2. إرسال التوكن (النسخة المحسنة ستجلب التوكن إذا كان مفقوداً)
+      await FcmService.instance.sendFcmTokenToBackend();
+      
+    } catch (e) {
+      _safeShowMessage('⚠️ Error during auth finalization: $e');
+    }
+  }
   Future<void> _handleOfflineAuthentication(String token) async {
     if (token.isNotEmpty) {
       _userId = await getUserId();
@@ -296,6 +336,7 @@ class AuthProvider with ChangeNotifier {
       _isOfflineMode = false;
       _requiresVerification = false;
       _pendingVerificationEmail = null;
+      _previousSubscriptionStatus = false; // Reset previous subscription status
       _safeShowMessage('✅ All user data cleared');
     } catch (e) {
       _errorMessage = 'Error clearing all user data: $e';
@@ -308,7 +349,7 @@ class AuthProvider with ChangeNotifier {
     required String email,
     required String password,
     String language = 'en',
-  }) async {
+    }) async {
     try {
       _isLoading = true;
       _errorMessage = null;
@@ -382,7 +423,7 @@ class AuthProvider with ChangeNotifier {
           
           // Check subscription status to determine authentication
           await _checkSubscriptionAndSetAuthStatus();
-          
+          _finalizeAuthenticationFlow(); 
           _safeShowMessage('✅ Login successful, Activated: $_isActivated');
           return {'success': true, 'activated': true, 'userData': userData};
         } else {
@@ -610,7 +651,7 @@ class AuthProvider with ChangeNotifier {
           
           // Check subscription status to determine authentication
           await _checkSubscriptionAndSetAuthStatus();
-
+          await  _finalizeAuthenticationFlow(); 
           _safeShowMessage('✅ Successfully signed in with Google');
           return {'success': true, 'activated': true, 'userData': userData};
         } else {
@@ -689,6 +730,7 @@ class AuthProvider with ChangeNotifier {
       _requiresVerification = false;
       _pendingVerificationEmail = null;
       _isActivated = false;
+      _previousSubscriptionStatus = false; // Reset previous subscription status
       _safeShowMessage('✅ Logged out successfully');
     } catch (e) {
       _errorMessage = 'Failed to logout: $e';
@@ -867,7 +909,7 @@ class AuthProvider with ChangeNotifier {
         
         // Check subscription status to determine authentication
         await _checkSubscriptionAndSetAuthStatus();
-        
+        await  _finalizeAuthenticationFlow(); 
         _safeShowMessage('✅ Email verified successfully for $email');
         return {'success': true};
       } else {
@@ -994,6 +1036,7 @@ class AuthProvider with ChangeNotifier {
   Future<void> refreshSubscriptionStatus() async {
     if (_userId != null) {
       await _checkSubscriptionAndSetAuthStatus();
+      await  _finalizeAuthenticationFlow(); 
     }
   }
 }

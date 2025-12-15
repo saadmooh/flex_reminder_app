@@ -23,9 +23,12 @@ import 'package:flex_reminder/firebase_options.dart';
 import 'package:flex_reminder/providers/auth_provider.dart';
 import 'package:flex_reminder/providers/reminders_notifier.dart';
 import 'package:flex_reminder/services/notification_service.dart';
-import 'package:flex_reminder/services/fcm_service.dart' hide RemindersNotifier;
+import 'package:flex_reminder/services/reminders_service.dart';
+import 'package:flex_reminder/services/fcm_service.dart';
 import 'package:flex_reminder/utils/connectivity_helper.dart';
 import 'dart:convert';
+import 'package:flex_reminder/services/subscription_manager.dart';
+
 
 // إنشاء instance مشترك للـ NotificationService
 late NotificationService _backgroundNotificationService;
@@ -63,9 +66,14 @@ void _safeShowMessage(String message, {Color? color, bool debugOnly = false}) {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // ✅ 1. تهيئة Firebase أولاً
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   
-  print('🚀 ========== بدء تشغيل التطبيق ==========');
-
+  // ✅ 2. ثم تسجيل معالج الخلفية
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  
   // ✅ تفعيل وضع Debug في بداية التطبيق
   isDebugMode = true; // من globals.dart
   
@@ -87,10 +95,7 @@ Future<void> _initializeAndStartApp() async {
   try {
     // تهيئة Firebase
     final firebaseInitialized = await _initializeFirebaseSafely();
-    if (firebaseInitialized) {
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-      await _initializeFcmSafely();
-    }
+    
 
     // تهيئة WorkManager
     try {
@@ -241,44 +246,51 @@ Future<bool> _initializeFcmSafely() async {
 // ============================================================================
 
 @pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print('\n🌙 ========== BACKGROUND FCM MESSAGE ==========');
-  print('📨 Message ID: ${message.messageId}');
-  print('⏰ Sent Time: ${message.sentTime}');
-  print('📦 Data: ${message.data}');
-  
-  try {
-    print('🔄 Step 1: Checking Firebase...');
-    if (Firebase.apps.isEmpty) {
-      print('   Initializing Firebase...');
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-      print('   ✓ Firebase initialized');
-    }
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+ await Firebase.initializeApp(
+  options: DefaultFirebaseOptions.currentPlatform,
+);
 
-    print('🔄 Step 2: Initializing background services...');
-    await _initializeBackgroundServices();
+  final data = Map<String, dynamic>.from(message.data);
+  final type = data['type'];
+   switch (type) {
+    case 'reminder_update':
+      await RemindersService.instance
+          .handleReminderUpdateInBackground(data);
+      break;
 
-    print('🔄 Step 3: Processing message...');
-    final fcmService = FcmService.instance;
-    await fcmService.processMessage(message, isBackground: true);
-    
-    print('✅ Background message handled successfully');
-    print('==========================================\n');
-    
-  } catch (e, stackTrace) {
-    print('❌ Background handler error: $e');
-    print('Stack trace: $stackTrace');
+    case 'subscription_update':
+      await SubscriptionManager()
+          .handleSubscriptionUpdateNotification(data);
+      break;
   }
+ 
 }
+
+
 
 Future<void> _initializeBackgroundServices() async {
   try {
+    debugPrint('🔄 Initializing background services...');
+    
+    // 1. Initialize NotificationService
     _backgroundNotificationService = NotificationService();
     await _backgroundNotificationService.init();
+    
+    // 2. Initialize Local Notifications
     await _initializeLocalNotifications();
-    debugPrint('✅ Background services initialized');
+    
+    // 3. Initialize AuthProvider (Required for API calls)
+    debugPrint('🔑 Initializing AuthProvider for background...');
+    final authProvider = AuthProvider.instance;
+    await authProvider.initializeAuthentication();
+    
+    // 4. Initialize RemindersNotifier with AuthProvider
+    debugPrint('🔔 Initializing RemindersNotifier for background...');
+    final remindersNotifier = RemindersNotifier.instance;
+    await remindersNotifier.initialize(authProvider: authProvider);
+    
+    debugPrint('✅ Background services initialized successfully');
   } catch (e) {
     debugPrint('❌ Background services error: $e');
   }

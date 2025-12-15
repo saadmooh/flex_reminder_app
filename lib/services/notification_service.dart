@@ -291,7 +291,14 @@ class NotificationService {
 
   static void _showSnackBar(String message, Color backgroundColor) {
     if (navigatorKey.currentContext != null) {
-      // إذا كان التطبيق مفتوحًا، أظهر Snackbar
+      // ✅ التحقق من وضع التطبيق (AppMode) قبل عرض SnackBar
+      if (!isDebugMode) {
+        // في وضع الإنتاج: طباعة في الـ Console فقط
+        debugPrint('📱 [NotificationService - Production Log]: $message');
+        return;
+      }
+
+      // في وضع Debug: عرض Snackbar عادي
       final scaffoldMessenger =
           ScaffoldMessenger.of(navigatorKey.currentContext!);
       scaffoldMessenger.showSnackBar(
@@ -307,8 +314,8 @@ class NotificationService {
         ),
       );
     } else {
-      // Fallback: طباعة الرسالة في الخلفية (لا Snackbar)
-      print('📱 Snackbar fallback (app in background): $message');
+      // Fallback: طباعة الرسالة في الخلفية
+      debugPrint('📱 [NotificationService - Background]: $message');
     }
   }
 
@@ -415,58 +422,41 @@ class NotificationService {
       final String? url = payload['url'];
       final int? reminderId = int.tryParse(reminderIdStr);
 
-      // === START: التعديلات الجديدة ===
+      // === START: تنفيذ منطق زر Go ===
       if (reminderId != null) {
-        // 1. تحديث الواجهة فوراً بشكل استباقي
-        // نحصل على نسخة RemindersNotifier ونقوم بالتحديث المحلي
-        final remindersNotifier = RemindersNotifier.instance;
-        await remindersNotifier.markReminderAsReadLocally(reminderId);
-
-        // 2. إلغاء أي إشعارات مستقبلية لهذا التذكير لأنه أصبح مقروءاً
-        await NotificationService.instance
-            .cancelReminderNotifications(reminderId);
-        NotificationService.showSuccessSnackBar(
-            '✅ تم إلغاء الإشعارات المتبقية للتذكير $reminderId.');
+        try {
+          // 1. تنفيذ نفس دالة زر "Go": تحديث السيرفر + المحلي + الكاش + إلغاء الإشعارات
+          await RemindersNotifier.instance.markReminderAsRead(reminderId);
+          NotificationService.showSuccessSnackBar('✅ تم تمييز التذكير كمقروء');
+        } catch (e) {
+          NotificationService.showErrorSnackBar('⚠️ خطأ في تحديث حالة التذكير: $e');
+          // في حالة الفشل، نحاول تحديث الإحصائيات مباشرة كخيار بديل
+          if (url != null && url.isNotEmpty) {
+             try {
+               await ApiService().updateStats(url, true);
+             } catch (_) {}
+          }
+        }
       }
-      // === END: التعديلات الجديدة ===
+      // === END: تنفيذ منطق زر Go ===
 
-      // فتح الرابط فوراً للمستخدم (أولوية قصوى)
+      // 2. فتح الرابط فوراً للمستخدم (أولوية قصوى)
       if (url != null && url.isNotEmpty) {
         final Uri? uri = Uri.tryParse(url);
         if (uri != null && await canLaunchUrl(uri)) {
           try {
             await launchUrl(uri, mode: LaunchMode.externalApplication);
             NotificationService.showSuccessSnackBar(
-                '🌐 Successfully launched URL immediately: $url');
-
-            // جدولة مهمة في الخلفية لتحديث بيانات السيرفر (تبقى كما هي)
-            if (reminderId != null) {
-              await _instance._scheduleMarkReminderAsReadTask(
-                  reminderId, url, true);
-            }
+                '🌐 تم فتح الرابط بنجاح: $url');
           } catch (e) {
-            NotificationService.showErrorSnackBar('❌ Error launching URL: $e');
-            NotificationService.showErrorSnackBar('خطأ في فتح الرابط: $url');
-
-            // حتى لو فشل فتح الرابط، نحدث بيانات السيرفر
-            if (reminderId != null) {
-              await _instance._scheduleMarkReminderAsReadTask(
-                  reminderId, url, false);
-            }
+            NotificationService.showErrorSnackBar('❌ خطأ في فتح الرابط: $e');
           }
         } else {
           NotificationService.showErrorSnackBar(
-              '❌ Invalid or unsupported URL: $url');
-          NotificationService.showErrorSnackBar('الرابط غير صالح: $url');
-
-          // تحديث البيانات حتى لو كان الرابط غير صالح
-          if (reminderId != null) {
-            await _instance._scheduleMarkReminderAsReadTask(
-                reminderId, url, false);
-          }
+              '❌ الرابط غير صالح أو غير مدعوم: $url');
         }
       } else {
-        NotificationService.showWarningSnackBar('⚠️ No URL provided in payload');
+        NotificationService.showWarningSnackBar('⚠️ لا يوجد رابط في الإشعار');
       }
 
       // التنقل إلى صفحة التذكير (يبقى كما هو)

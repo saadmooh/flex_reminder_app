@@ -55,68 +55,90 @@ class AuthenticationService {
   Future<void> logout() async {
     _debugLog('Starting logout process');
 
-    try {
-      // 1. تسجيل الخروج من RevenueCat فقط (بدون reset كامل)
-      try {
-        await RevenueCatService.instance.logoutUser();
-        _debugLog('RevenueCat user logged out successfully');
-      } catch (e) {
-        _debugLog('RevenueCat logout failed (continuing): $e');
-      }
+    final remindersNotifier = RemindersNotifier.instance;
+    final authProvider = AuthProvider.instance;
 
-      // 2. إلغاء جميع الإشعارات
-      final remindersNotifier = RemindersNotifier.instance;
+    // 1. تسجيل الخروج من RevenueCat
+    try {
+      await RevenueCatService.instance.logoutUser();
+      _debugLog('RevenueCat user logged out successfully');
+    } catch (e) {
+      _debugLog('RevenueCat logout failed (continuing): $e');
+    }
+
+    // 2. إلغاء جميع الإشعارات
+    try {
       await remindersNotifier.cancelAllNotifications();
       _debugLog('All notifications cancelled');
+    } catch (e) {
+      _debugLog('Error cancelling notifications (continuing): $e');
+    }
 
-      // 3. مسح جميع التذكيرات والتخزين المؤقت
+    // 3. مسح جميع التذكيرات والتخزين المؤقت
+    try {
       await remindersNotifier.clearSessionCache();
       _debugLog('All reminders and cache cleared');
+    } catch (e) {
+      _debugLog('Error clearing session cache (continuing): $e');
+    }
 
-      // 4. إعادة تعيين RemindersNotifier instance
+    // 4. إعادة تعيين RemindersNotifier instance
+    try {
       await remindersNotifier.resetInstance();
       _debugLog('RemindersNotifier instance reset');
+    } catch (e) {
+      _debugLog('Error resetting RemindersNotifier (continuing): $e');
+    }
 
-      // 5. تسجيل الخروج من Google Sign-In
-      final authProvider = AuthProvider.instance;
-      try {
-        await authProvider.signOutFromGoogle();
-        _debugLog('Signed out from Google successfully');
-      } catch (e) {
-        _debugLog('Google sign-out failed (continuing with logout): $e');
-      }
+    // 5. مسح بيانات الاشتراك (مهم جداً لمنع الدخول التلقائي)
+    try {
+      await SubscriptionManager().reset();
+      _debugLog('SubscriptionManager data reset');
+    } catch (e) {
+      _debugLog('Error resetting SubscriptionManager (continuing): $e');
+    }
 
-      // 6. استدعاء تسجيل الخروج من AuthProvider
+    // 6. تسجيل الخروج من Google Sign-In
+    try {
+      await authProvider.signOutFromGoogle();
+      _debugLog('Signed out from Google successfully');
+    } catch (e) {
+      _debugLog('Google sign-out failed (continuing with logout): $e');
+    }
+
+    // 7. مسح أي بيانات إضافية متعلقة بالجلسة
+    try {
+      await _clearAdditionalSessionData();
+      _debugLog('Additional session data cleared');
+    } catch (e) {
+      _debugLog('Error clearing additional session data: $e');
+    }
+
+    // 8. استدعاء تسجيل الخروج من AuthProvider (الخطوة الأهم)
+    try {
       await authProvider.logout();
       _debugLog('AuthProvider logout completed');
-
-      // 7. إعادة تعيين AuthProvider instance إذا كانت هناك حاجة
-      try {
-        await authProvider.clearAllUserData();
-        _debugLog('All user data cleared from AuthProvider');
-      } catch (e) {
-        _debugLog('Error clearing AuthProvider data: $e');
-      }
-
-      // 8. مسح أي بيانات إضافية متعلقة بالجلسة
-      await _clearAdditionalSessionData();
-
-      _showSuccessSnackBar('Logged out successfully');
-      _debugLog('Logout completed successfully');
-
-      // 9. الانتقال إلى صفحة تسجيل الدخول
-      NavigationService.navigateTo(context, '/auth');
     } catch (e) {
-      _debugLog('Logout failed: $e');
-      _showErrorSnackBar('Failed to logout: $e');
-
-      // في حالة الفشل، حاول على الأقل الانتقال إلى صفحة المصادقة
+      _debugLog('AuthProvider logout failed (CRITICAL): $e');
+      // نحاول فرض مسح البيانات محلياً حتى لو فشل الاتصال
       try {
-        NavigationService.navigateTo(context, '/auth');
-      } catch (navError) {
-        _debugLog('Navigation after failed logout also failed: $navError');
-      }
+        await authProvider.clearToken();
+      } catch (_) {}
     }
+
+    // 9. مسح جميع بيانات المستخدم من AuthProvider
+    try {
+      await authProvider.clearAllUserData();
+      _debugLog('All user data cleared from AuthProvider');
+    } catch (e) {
+      _debugLog('Error clearing AuthProvider data: $e');
+    }
+
+    _showSuccessSnackBar('Logged out successfully');
+    _debugLog('Logout process finished');
+
+    // 10. الانتقال إلى صفحة تسجيل الدخول
+    NavigationService.navigateTo(context, '/auth');
   }
 
   Future<void> _clearAdditionalSessionData() async {

@@ -5,6 +5,7 @@ import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
 import 'package:flex_reminder/services/revenuecat_service.dart';
 import 'package:flex_reminder/globals.dart';
 import 'package:flex_reminder/l10n/app_localizations.dart';
+import 'package:flex_reminder/services/fcm_service.dart';
 
 class SubscriptionManagementScreen extends StatefulWidget {
   const SubscriptionManagementScreen({super.key});
@@ -82,14 +83,20 @@ class _SubscriptionManagementScreenState
       if (result != null) {
         RevenueCatService.instance.handlePaywallResult(
           result,
-          onPurchased: () {
+          onPurchased: () async {
+            // ✅ إرسال التوكن للباك إند عند الشراء
+            await FcmService.instance.sendFcmTokenToBackend();
+            
             setState(() {
               _isPremium = true;
               _errorMessage = null;
             });
             _navigateToReminders();
           },
-          onRestored: () {
+          onRestored: () async {
+            // ✅ إرسال التوكن للباك إند عند الاستعادة
+            await FcmService.instance.sendFcmTokenToBackend();
+
             setState(() {
               _isPremium = true;
               _errorMessage = null;

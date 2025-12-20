@@ -4,6 +4,7 @@ import 'package:flex_reminder/models/reminders_response.dart';
 import 'package:flex_reminder/models/user_free_time.dart';
 import 'package:flex_reminder/models/user.dart';
 import 'api_functions/api_config.dart';
+import 'package:flex_reminder/services/reminders_service.dart';
 import 'api_functions/auth_service.dart';
 import 'api_functions/subscription_service.dart';
 import 'api_functions/reminder_service.dart';

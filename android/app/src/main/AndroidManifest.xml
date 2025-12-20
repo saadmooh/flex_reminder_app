@@ -88,7 +88,20 @@
             android:exported="false" />
         
         <!-- ==================== Main Activity ==================== -->
-        
+        <!-- تعريف خدمة Firebase للمراسلة في الخلفية يدوياً -->
+<service
+    android:name="io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingBackgroundService"
+    android:permission="android.permission.BIND_JOB_SERVICE"
+    android:exported="false">
+</service>
+
+<service
+    android:name="io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingService"
+    android:exported="false">
+    <intent-filter>
+        <action android:name="com.google.firebase.MESSAGING_EVENT" />
+    </intent-filter>
+</service>
         <activity
             android:name="com.saadmohammed2000.flex_reminder.MainActivity"
             android:exported="true"

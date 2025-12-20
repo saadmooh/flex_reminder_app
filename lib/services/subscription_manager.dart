@@ -236,7 +236,7 @@ class SubscriptionManager {
     try {
       final userId = data['title']?.toString() ?? '';
       final subscriptionStatus = data['body']?.toString() ?? '';
-      final type = data['type']?.toString() ?? '';
+      final type = data['detailed_data']['event_type']?.toString() ?? '';
       
       if (kDebugMode) {
         print('SubscriptionManager: Handling FCM subscription update');

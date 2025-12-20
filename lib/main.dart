@@ -1,7 +1,10 @@
 import 'package:flex_reminder/globals.dart'; // استيراد واحد فقط
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;  // 🔥 ده اللي كان ناقص للـ http
+import '../../utils/consts.dart';        // 🔥 ده فيه AppConstants (API_BASE_URL و API_PASSWORD)
 import 'package:flutter/foundation.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // تم التأكد من وجود هذا الاستيراد
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:flex_reminder/pages/auth_screen.dart';
@@ -71,7 +74,10 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
   
-  // ✅ 2. ثم تسجيل معالج الخلفية
+  // ✅ 2. تهيئة الإشعارات المحلية قبل تسجيل معالج الخلفية
+  await _initializeLocalNotifications(); // 🔥 تعديل جديد: استدعاء التهيئة هنا
+  
+  // ✅ 3. ثم تسجيل معالج الخلفية
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   
   // ✅ تفعيل وضع Debug في بداية التطبيق
@@ -96,7 +102,6 @@ Future<void> _initializeAndStartApp() async {
     // تهيئة Firebase
     final firebaseInitialized = await _initializeFirebaseSafely();
     
-
     // تهيئة WorkManager
     try {
       await Workmanager().initialize(
@@ -108,7 +113,7 @@ Future<void> _initializeAndStartApp() async {
       debugPrint('WorkManager error: $e');
     }
 
-    // تهيئة NotificationService
+    // تهيئة NotificationService (للإشعارات المجدولة)
     try {
       final notificationService = NotificationService();
       await notificationService.init();
@@ -247,13 +252,49 @@ Future<bool> _initializeFcmSafely() async {
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
- await Firebase.initializeApp(
-  options: DefaultFirebaseOptions.currentPlatform,
-);
+  // تهيئة Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
+
+  // ====================== الجزء الجديد: إرسال طلب تجريبي للـ backend ======================
+  try {
+    final uri = Uri.parse('${AppConstants.API_BASE_URL}/test-fcm-background');
+
+    final response = await http.post(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Password': AppConstants.API_PASSWORD, // لو موجود عندك
+        // ممكن نضيف header إضافي عشان نميز الطلب
+        'X-FCM-Background-Test': 'true',
+      },
+      body: jsonEncode({
+        'message_id': message.messageId,
+        'title': message.notification?.title ?? 'No title',
+        'body': message.notification?.body ?? 'No body',
+        'data': message.data,
+        'sent_time': message.sentTime?.toIso8601String(),
+        'received_at_background': DateTime.now().toIso8601String(),
+      }),
+    ).timeout(const Duration(seconds: 10)); // حماية من التعليق
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      debugPrint('✅ تم إرسال تأكيد وصول FCM في الخلفية بنجاح!');
+    } else {
+      debugPrint('⚠️ تأكيد FCM في الخلفية: استجابة غير ناجحة ${response.statusCode}');
+    }
+  } catch (e) {
+    debugPrint('❌ فشل إرسال تأكيد FCM في الخلفية: $e');
+  }
+  // =================================================================================
+
+  // باقي الكود الأصلي (معالجة النوع)
   final data = Map<String, dynamic>.from(message.data);
   final type = data['type'];
-   switch (type) {
+
+  switch (type) {
     case 'reminder_update':
       await RemindersService.instance
           .handleReminderUpdateInBackground(data);
@@ -264,9 +305,36 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           .handleSubscriptionUpdateNotification(data);
       break;
   }
- 
 }
 
+// 🔥 تعديل جديد: دالة مساعدة لعرض الإشعار المحلي
+Future<void> _showLocalNotificationFromMessage(RemoteMessage message) async {
+  // تأكد من تهيئة الإشعارات المحلية
+  if (_flutterLocalNotificationsPlugin == null) {
+    await _initializeLocalNotifications();
+  }
+
+  const AndroidNotificationDetails androidPlatformChannelSpecifics =
+      AndroidNotificationDetails(
+    'high_importance_channel', // معرف القناة
+    'High Importance Notifications', // اسم القناة
+    channelDescription: 'This channel is used for important notifications.',
+    importance: Importance.max,
+    priority: Priority.high,
+    icon: '@mipmap/ic_launcher', // 🔥 تعديل جديد: استخدام أيقونة التطبيق
+  );
+
+  const NotificationDetails platformChannelSpecifics =
+      NotificationDetails(android: androidPlatformChannelSpecifics);
+
+  await _flutterLocalNotificationsPlugin.show(
+    message.hashCode, // معرف فريد للإشعار
+    message.notification?.title ?? 'Flex Reminder', // عنوان الإشعار
+    message.notification?.body ?? 'لديك تذكير جديد', // محتوى الإشعار
+    platformChannelSpecifics,
+    payload: jsonEncode(message.data), // إرسال البيانات كـ payload
+  );
+}
 
 
 Future<void> _initializeBackgroundServices() async {
@@ -300,7 +368,7 @@ Future<void> _initializeLocalNotifications() async {
   try {
     _flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('@mipmap/ic_launcher'); // 🔥 تعديل جديد: استخدام أيقونة التطبيق
     const DarwinInitializationSettings initializationSettingsDarwin =
         DarwinInitializationSettings(
       requestSoundPermission: true,

@@ -300,7 +300,7 @@ Future<void> processMessage(RemoteMessage message) async {
   final data = Map<String, dynamic>.from(message.data);
  
   final type = data['type']?.toString();
-
+  showSuccessSnackBar('type: $type');
   if (type == null) {
  //   showSuccessSnackBar('❌ type is NULL');
     return;
@@ -308,12 +308,12 @@ Future<void> processMessage(RemoteMessage message) async {
 
   switch (type) {
     case 'reminder_update':
-   //   showSuccessSnackBar('🔔 reminder_update');
+      showSuccessSnackBar('🔔 reminder_update');
       await RemindersNotifier.instance.handleFcmData(data);
       break;
 
     case 'subscription_update':
-   //   showSuccessSnackBar('💳 subscription_update');
+      showSuccessSnackBar('💳 subscription_update');
       await SubscriptionManager()
           .handleSubscriptionUpdateNotification(data);
       break;

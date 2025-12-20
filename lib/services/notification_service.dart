@@ -12,14 +12,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/services.dart'; // إضافة لـ MethodChannel
+import 'package:flutter/services.dart';
 
 // دالة للتعامل مع مهام WorkManager في الخلفية
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
-    NotificationService.showSuccessSnackBar(
-        '🔄 WorkManager task executing: $task');
     switch (task) {
       case 'followUpNotification':
         await _handleFollowUpNotification(inputData);
@@ -28,7 +26,6 @@ void callbackDispatcher() {
         await _handleMarkReminderAsRead(inputData);
         break;
       default:
-        NotificationService.showErrorSnackBar('❌ Unknown task: $task');
         return false;
     }
     return true;
@@ -41,43 +38,25 @@ Future<void> _handleFollowUpNotification(
     Map<String, dynamic>? inputData) async {
   try {
     if (inputData == null) {
-      NotificationService.showErrorSnackBar(
-          '❌ No input data provided for follow-up notification');
       return;
     }
-
     final String title = inputData['title'] ?? 'تذكير متابعة';
     final String body = inputData['body'] ?? 'هذا تذكير متابعة!';
     final String reminderId = inputData['reminderId']?.toString() ?? '';
     final String url = inputData['url'] ?? '';
     final String importance = inputData['importance'] ?? '';
 
-    NotificationService.showSuccessSnackBar(
-        '🔄 Processing follow-up for reminder: $reminderId');
-
     // إرسال طلب reschedulePost إلى السيرفر
     try {
-      NotificationService.showSuccessSnackBar(
-          '📡 Sending reschedulePost request to server...');
-      NotificationService.showSuccessSnackBar('🔗 URL: $url');
-      NotificationService.showSuccessSnackBar('⚡ Importance: $importance');
-
       final apiService = ApiService();
       final Map<String, dynamic> rescheduleResult =
           await apiService.reschedulePost(url, importance);
-
-      NotificationService.showSuccessSnackBar(
-          '✅ Successfully rescheduled post on server');
-      NotificationService.showSuccessSnackBar(
-          '📅 Server response: $rescheduleResult');
 
       // التحقق من وجود وقت جديد في الاستجابة
       if (rescheduleResult.containsKey('post') &&
           rescheduleResult['post'].containsKey('next_reminder_time')) {
         final String newReminderTime =
             rescheduleResult['post']['next_reminder_time'];
-        NotificationService.showSuccessSnackBar(
-            '🕐 New reminder time received: $newReminderTime');
 
         // إرسال إشعار متابعة مع المعلومات المحدثة
         await AwesomeNotifications().createNotification(
@@ -100,11 +79,8 @@ Future<void> _handleFollowUpNotification(
             locked: true,
           ),
         );
-
-        NotificationService.showSuccessSnackBar(
-            '📨 Follow-up notification sent with reschedule info');
       } else {
-        // إرسال إشعار متابعة عادي في حالة عدم وجود وقت جديد
+        // إرسال إشعار متابعة عادي
         await AwesomeNotifications().createNotification(
           content: NotificationContent(
             id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
@@ -123,20 +99,11 @@ Future<void> _handleFollowUpNotification(
             locked: true,
           ),
         );
-
-        NotificationService.showSuccessSnackBar(
-            '📨 Standard follow-up notification sent');
       }
     } catch (apiError) {
-      NotificationService.showErrorSnackBar(
-          '❌ Error calling reschedulePost API: $apiError');
-
       // جدولة إعادة محاولة بعد 30 دقيقة
       final DateTime retryTime =
           DateTime.now().add(const Duration(minutes: 30));
-      NotificationService.showSuccessSnackBar(
-          '🔄 Scheduling retry for reschedulePost at: $retryTime');
-
       await Workmanager().registerOneOffTask(
         'retry_followUpNotification_$reminderId',
         'followUpNotification',
@@ -151,10 +118,6 @@ Future<void> _handleFollowUpNotification(
         },
         constraints: Constraints(
           networkType: NetworkType.connected,
-          requiresBatteryNotLow: false,
-          requiresCharging: false,
-          requiresDeviceIdle: false,
-          requiresStorageNotLow: false,
         ),
       );
 
@@ -164,10 +127,8 @@ Future<void> _handleFollowUpNotification(
       followUpTasks[reminderId.toString()] =
           'retry_followUpNotification_$reminderId';
       await prefs.setString('follow_up_tasks', jsonEncode(followUpTasks));
-      NotificationService.showSuccessSnackBar(
-          '✅ Scheduled retry task for reminder $reminderId');
 
-      // إرسال إشعار لإعلام المستخدم بمحاولة إعادة الجدولة
+      // إرسال إشعار خطأ مع معلومات إعادة المحاولة
       await AwesomeNotifications().createNotification(
         content: NotificationContent(
           id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
@@ -190,16 +151,9 @@ Future<void> _handleFollowUpNotification(
           locked: true,
         ),
       );
-
-      NotificationService.showSuccessSnackBar(
-          '📨 Error follow-up notification sent with retry info');
     }
-
-    NotificationService.showSuccessSnackBar(
-        '✅ Follow-up processing completed for reminder: $reminderId');
   } catch (e) {
-    NotificationService.showErrorSnackBar(
-        '❌ Error in follow-up notification handler: $e');
+    // لا نفعل شيئاً هنا (تم حذف الـ SnackBar)
   }
 }
 
@@ -208,33 +162,22 @@ Future<void> _handleFollowUpNotification(
 Future<void> _handleMarkReminderAsRead(Map<String, dynamic>? inputData) async {
   try {
     if (inputData == null) {
-      NotificationService.showErrorSnackBar(
-          '❌ No input data provided for markReminderAsRead');
       return;
     }
     final String url = inputData['url'] ?? '';
     final int reminderId = inputData['reminderId'] ?? 0;
     final bool wasOpened = inputData['wasOpened'] ?? true;
-    NotificationService.showSuccessSnackBar(
-        '📖 Processing markReminderAsRead for reminder: $reminderId');
-    NotificationService.showSuccessSnackBar('🌐 URL: $url');
-    NotificationService.showSuccessSnackBar('👁️ Was Opened: $wasOpened');
+
     // إرسال طلب updateStats إلى السيرفر
     try {
       final apiService = ApiService();
       await apiService.updateStats(url, wasOpened);
-      NotificationService.showSuccessSnackBar(
-          '✅ Successfully sent updateStats to server');
     } catch (apiError) {
-      NotificationService.showErrorSnackBar(
-          '❌ Error in markReminderAsRead API calls: $apiError');
-
-      // جدولة إعادة محاولة بعد 30 ثانية
+      // جدولة إعادة محاولة
       await _scheduleMarkReminderAsReadRetry(reminderId, url, wasOpened);
     }
   } catch (e) {
-    NotificationService.showErrorSnackBar(
-        '❌ Error in markReminderAsRead handler: $e');
+    // تم حذف الـ SnackBar
   }
 }
 
@@ -244,7 +187,6 @@ Future<void> _scheduleMarkReminderAsReadRetry(
     int reminderId, String url, bool wasOpened) async {
   try {
     final String retryTaskName = 'retry_markReminderAsRead_$reminderId';
-
     await Workmanager().registerOneOffTask(
       retryTaskName,
       'markReminderAsRead',
@@ -257,17 +199,10 @@ Future<void> _scheduleMarkReminderAsReadRetry(
       },
       constraints: Constraints(
         networkType: NetworkType.connected,
-        requiresBatteryNotLow: false,
-        requiresCharging: false,
-        requiresDeviceIdle: false,
-        requiresStorageNotLow: false,
       ),
     );
-    NotificationService.showSuccessSnackBar(
-        '🔄 Scheduled retry for markReminderAsRead: $retryTaskName');
   } catch (e) {
-    NotificationService.showErrorSnackBar(
-        '❌ Error scheduling markReminderAsRead retry: $e');
+    // تم حذف الـ SnackBar
   }
 }
 
@@ -289,48 +224,7 @@ class NotificationService {
   static const platform =
       MethodChannel('com.saadmohammed2000.flex_reminder/alarm');
 
-  static void _showSnackBar(String message, Color backgroundColor) {
-    if (navigatorKey.currentContext != null) {
-      // ✅ التحقق من وضع التطبيق (AppMode) قبل عرض SnackBar
-      if (!isDebugMode) {
-        // في وضع الإنتاج: طباعة في الـ Console فقط
-        debugPrint('📱 [NotificationService - Production Log]: $message');
-        return;
-      }
-
-      // في وضع Debug: عرض Snackbar عادي
-      final scaffoldMessenger =
-          ScaffoldMessenger.of(navigatorKey.currentContext!);
-      scaffoldMessenger.showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: backgroundColor,
-          duration: const Duration(seconds: 3),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.all(10),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-      );
-    } else {
-      // Fallback: طباعة الرسالة في الخلفية
-      debugPrint('📱 [NotificationService - Background]: $message');
-    }
-  }
-
-  // الدوال المساعدة الآن static (تعمل مباشرة بدون instance)
-  static void showSuccessSnackBar(String message) {
-    _showSnackBar(message, Colors.green);
-  }
-
-  static void showErrorSnackBar(String message) {
-    _showSnackBar(message, Colors.red);
-  }
-
-  static void showWarningSnackBar(String message) {
-    _showSnackBar(message, Colors.orange);
-  }
+  // تم حذف دالة _showSnackBar وجميع دوال showSnackBar (success/error/warning)
 
   // فحص الاتصال بالإنترنت
   Future<bool> _checkInternetConnection() async {
@@ -338,22 +232,17 @@ class NotificationService {
       final connectivityResult = await Connectivity().checkConnectivity();
       return connectivityResult != ConnectivityResult.none;
     } catch (e) {
-      NotificationService.showErrorSnackBar(
-          '❌ خطأ في فحص الاتصال بالإنترنت: $e');
       return false;
     }
   }
 
   Future<void> init() async {
     tz.initializeTimeZones();
-
-    // تهيئة WorkManager
     await Workmanager().initialize(
       callbackDispatcher,
       isInDebugMode: false,
     );
 
-    // الاحتفاظ بـ AwesomeNotifications للإشعارات العامة أو الـ listeners إذا لزم الأمر
     await AwesomeNotifications().initialize(
       'resource://drawable/notification',
       [
@@ -391,26 +280,19 @@ class NotificationService {
   @pragma("vm:entry-point")
   static Future<void> onNotificationCreated(
       ReceivedNotification receivedNotification) async {
-    NotificationService.showSuccessSnackBar(
-        '📝 Notification created: ${receivedNotification.title}');
+    // تم حذف الـ SnackBar
   }
 
   @pragma("vm:entry-point")
   static Future<void> onNotificationDisplayed(
       ReceivedNotification receivedNotification) async {
-    NotificationService.showSuccessSnackBar(
-        '📱 Notification displayed: ${receivedNotification.title} at ${DateTime.now()}');
-    NotificationService.showSuccessSnackBar(
-        '🔔 حان وقت التذكير: ${receivedNotification.title}');
-    NotificationService.showSuccessSnackBar(
-        '🔔 Main reminder notification: ${receivedNotification.title}');
+    // تم حذف الـ SnackBars
   }
 
   @pragma("vm:entry-point")
   static Future<void> onDismissActionReceived(
       ReceivedAction receivedAction) async {
-    NotificationService.showErrorSnackBar(
-        '❌ Notification dismissed: ${receivedAction.title}');
+    // تم حذف الـ SnackBar
   }
 
   @pragma("vm:entry-point")
@@ -422,55 +304,42 @@ class NotificationService {
       final String? url = payload['url'];
       final int? reminderId = int.tryParse(reminderIdStr);
 
-      // === START: تنفيذ منطق زر Go ===
       if (reminderId != null) {
-        try {
-          // 1. تنفيذ نفس دالة زر "Go": تحديث السيرفر + المحلي + الكاش + إلغاء الإشعارات
-          await RemindersNotifier.instance.markReminderAsRead(reminderId);
-          NotificationService.showSuccessSnackBar('✅ تم تمييز التذكير كمقروء');
-        } catch (e) {
-          NotificationService.showErrorSnackBar('⚠️ خطأ في تحديث حالة التذكير: $e');
-          // في حالة الفشل، نحاول تحديث الإحصائيات مباشرة كخيار بديل
-          if (url != null && url.isNotEmpty) {
-             try {
-               await ApiService().updateStats(url, true);
-             } catch (_) {}
-          }
-        }
+        final remindersNotifier = RemindersNotifier.instance;
+        await remindersNotifier.markReminderAsReadLocally(reminderId);
+        await NotificationService.instance
+            .cancelReminderNotifications(reminderId);
       }
-      // === END: تنفيذ منطق زر Go ===
 
-      // 2. فتح الرابط فوراً للمستخدم (أولوية قصوى)
       if (url != null && url.isNotEmpty) {
         final Uri? uri = Uri.tryParse(url);
         if (uri != null && await canLaunchUrl(uri)) {
           try {
             await launchUrl(uri, mode: LaunchMode.externalApplication);
-            NotificationService.showSuccessSnackBar(
-                '🌐 تم فتح الرابط بنجاح: $url');
+            if (reminderId != null) {
+              await _instance._scheduleMarkReminderAsReadTask(
+                  reminderId, url, true);
+            }
           } catch (e) {
-            NotificationService.showErrorSnackBar('❌ خطأ في فتح الرابط: $e');
+            if (reminderId != null) {
+              await _instance._scheduleMarkReminderAsReadTask(
+                  reminderId, url, false);
+            }
           }
         } else {
-          NotificationService.showErrorSnackBar(
-              '❌ الرابط غير صالح أو غير مدعوم: $url');
+          if (reminderId != null) {
+            await _instance._scheduleMarkReminderAsReadTask(
+                reminderId, url, false);
+          }
         }
-      } else {
-        NotificationService.showWarningSnackBar('⚠️ لا يوجد رابط في الإشعار');
       }
 
-      // التنقل إلى صفحة التذكير (يبقى كما هو)
       if (reminderId != null) {
         final Map<String, dynamic> arguments = {
           'reminderId': reminderId,
         };
         navigatorKey.currentState?.pushNamed('/reminder', arguments: arguments);
-        NotificationService.showSuccessSnackBar(
-            '🔗 Navigated to reminder page with ID: $reminderId');
       } else {
-        NotificationService.showErrorSnackBar(
-            '❌ Could not retrieve reminder ID from payload');
-        // إنشاء Reminder object كما هو موجود في الكود الأصلي
         final Reminder reminder = Reminder(
           id: receivedAction.id!,
           userId: 0,
@@ -494,27 +363,20 @@ class NotificationService {
         navigatorKey.currentState?.pushNamed('/reminder', arguments: reminder);
       }
     } catch (e) {
-      print('❌ Error in onNotificationActionReceived: $e');
+      // تم حذف الـ print
     }
   }
 
-  // دالة جديدة لجدولة مهمة markReminderAsRead
   Future<void> _scheduleMarkReminderAsReadTask(
       int reminderId, String url, bool wasOpened) async {
     try {
       final String taskName =
           'markReminderAsRead_${reminderId}_${DateTime.now().millisecondsSinceEpoch}';
 
-      NotificationService.showSuccessSnackBar(
-          '📋 Scheduling markReminderAsRead task: $taskName');
-      NotificationService.showSuccessSnackBar('🆔 Reminder ID: $reminderId');
-      NotificationService.showSuccessSnackBar('🌐 URL: $url');
-      NotificationService.showSuccessSnackBar('👁️ Was Opened: $wasOpened');
-
       await Workmanager().registerOneOffTask(
         taskName,
         'markReminderAsRead',
-        initialDelay: const Duration(seconds: 10), // تأخير 10 ثواني
+        initialDelay: const Duration(seconds: 10),
         inputData: {
           'reminderId': reminderId,
           'url': url,
@@ -522,53 +384,25 @@ class NotificationService {
         },
         constraints: Constraints(
           networkType: NetworkType.connected,
-          requiresBatteryNotLow: false,
-          requiresCharging: false,
-          requiresDeviceIdle: false,
-          requiresStorageNotLow: false,
         ),
       );
-      NotificationService.showSuccessSnackBar(
-          '✅ Successfully scheduled markReminderAsRead task');
     } catch (e) {
-      NotificationService.showErrorSnackBar(
-          '❌ Error scheduling markReminderAsRead task: $e');
-
-      // في حالة فشل الجدولة، نحاول إرسال الطلب مباشرة
       try {
-        NotificationService.showSuccessSnackBar(
-            '🔄 Attempting immediate API call as fallback...');
         final hasConnection = await _checkInternetConnection();
-
         if (hasConnection) {
           await ApiService().updateStats(url, wasOpened);
-          NotificationService.showSuccessSnackBar(
-              '✅ Fallback API calls successful');
-        } else {
-          NotificationService.showErrorSnackBar(
-              '❌ No internet connection for fallback');
         }
       } catch (fallbackError) {
-        NotificationService.showErrorSnackBar(
-            '❌ Fallback API call failed: $fallbackError');
+        // لا نفعل شيئاً
       }
     }
   }
 
-  // إضافة دالة للإلغاء الشامل للمهام الجديدة
   Future<void> cancelAllMarkReminderAsReadTasks() async {
     try {
-      NotificationService.showSuccessSnackBar(
-          '🧹 Canceling all markReminderAsRead tasks...');
-
-      // إلغاء جميع المهام التي تحتوي على markReminderAsRead
       await Workmanager().cancelAll();
-
-      NotificationService.showSuccessSnackBar(
-          '✅ All markReminderAsRead tasks canceled');
     } catch (e) {
-      NotificationService.showErrorSnackBar(
-          '❌ Error canceling markReminderAsRead tasks: $e');
+      // تم حذف الـ SnackBar
     }
   }
 
@@ -580,9 +414,6 @@ class NotificationService {
     required String importance,
     Map<String, String>? additionalPayload,
   }) async {
-    NotificationService.showSuccessSnackBar(
-        '🔧 Starting hidden check scheduling for reminder $reminderId');
-
     await scheduleReminderNotification(
       reminderId: reminderId,
       title: title,
@@ -591,9 +422,6 @@ class NotificationService {
       importance: importance,
       additionalPayload: additionalPayload,
     );
-
-    NotificationService.showSuccessSnackBar(
-        '✅ تم جدولة التذكير المخفي بنجاح لـ $title');
   }
 
   Future<void> scheduleReminderNotification({
@@ -604,15 +432,12 @@ class NotificationService {
     required String importance,
     Map<String, String>? additionalPayload,
   }) async {
-    NotificationService.showSuccessSnackBar(
-        '🔧 Scheduling reminder $reminderId: $title for: $scheduledDate');
     if (scheduledDate.isBefore(DateTime.now())) {
-      NotificationService.showWarningSnackBar(
-          '⚠️ Scheduled time is in the past: $scheduledDate');
       return;
     }
-    // إلغاء أي إنذارات سابقة
+
     await cancelReminderNotifications(reminderId);
+
     try {
       final result = await platform.invokeMethod('scheduleAlarm', {
         'reminderId': reminderId,
@@ -622,15 +447,9 @@ class NotificationService {
         'importance': importance,
         'scheduledTime': scheduledDate.millisecondsSinceEpoch,
       });
-      if (result == true) {
-        NotificationService.showSuccessSnackBar(
-            '✅ Successfully scheduled alarm for reminder $reminderId');
-      } else {
-        NotificationService.showErrorSnackBar(
-            '❌ Failed to schedule alarm for reminder $reminderId');
-      }
+      // لا نتحقق من النتيجة هنا (تم حذف الـ SnackBars)
     } catch (e) {
-      NotificationService.showErrorSnackBar('❌ Error scheduling alarm: $e');
+      // تم حذف الـ SnackBar
     }
   }
 
@@ -644,14 +463,9 @@ class NotificationService {
   }) async {
     try {
       final int notificationId = createUniqueId();
-      NotificationService.showSuccessSnackBar(
-          '🆔 Created notification with ID: $notificationId');
-
       final now = DateTime.now();
       if (scheduledDate.isBefore(now) ||
           scheduledDate.difference(now).inSeconds < 10) {
-        NotificationService.showErrorSnackBar(
-            '❌ Invalid notification time: $scheduledDate (current: $now)');
         return false;
       }
 
@@ -681,9 +495,6 @@ class NotificationService {
         ),
       );
 
-      NotificationService.showSuccessSnackBar(
-          '📅 Notification scheduled for: $scheduledDate');
-
       if (payload != null && payload.containsKey('id')) {
         final reminderId = int.parse(payload['id']!);
         final notificationMap = await _getNotificationMap();
@@ -693,11 +504,8 @@ class NotificationService {
         notificationMap[reminderId]!.add(notificationId);
         await _saveNotificationMap(notificationMap);
       }
-
       return true;
     } catch (e) {
-      NotificationService.showErrorSnackBar(
-          '❌ Error scheduling notification: $e');
       return false;
     }
   }
@@ -723,8 +531,6 @@ class NotificationService {
         payload: payload,
       );
     } catch (e) {
-      NotificationService.showErrorSnackBar(
-          '❌ Error scheduling notification: $e');
       return false;
     }
   }
@@ -736,10 +542,8 @@ class NotificationService {
   Future<void> cancelReminderNotifications(int reminderId) async {
     try {
       await platform.invokeMethod('cancelAlarm', {'reminderId': reminderId});
-      NotificationService.showSuccessSnackBar(
-          '🗑️ Cancelled alarm for reminder $reminderId');
     } catch (e) {
-      NotificationService.showErrorSnackBar('❌ Error cancelling alarm: $e');
+      // تم حذف الـ SnackBar
     }
   }
 
@@ -747,26 +551,13 @@ class NotificationService {
       Map<String, dynamic> reminderData) async {
     final reminderId = reminderData['id'] as int?;
     if (reminderId == null) {
-      NotificationService.showErrorSnackBar(
-          '❌ Cannot update notifications: Missing reminder ID');
       return;
     }
-
-    NotificationService.showSuccessSnackBar(
-        '🔄 Updating notifications for reminder $reminderId');
 
     final nextReminderTimeStr = reminderData['next_reminder_time'] as String?;
     if (nextReminderTimeStr != null && nextReminderTimeStr.isNotEmpty) {
       final scheduledDate = DateTime.parse(nextReminderTimeStr);
-
       if (scheduledDate.isBefore(DateTime.now())) {
-        NotificationService.showWarningSnackBar(
-            '⚠️ Notification time is in the past: $nextReminderTimeStr');
-        NotificationService.showWarningSnackBar(
-            '⚠️ Current time: ${DateTime.now()}');
-        NotificationService.showSuccessSnackBar(
-            '🔄 Requesting reschedule from server...');
-
         try {
           final Map<String, dynamic> resMap = await ApiService().reschedulePost(
               reminderData['url'] as String? ?? '',
@@ -774,10 +565,7 @@ class NotificationService {
           final String newScheduledTimeStr =
               resMap['post']['next_reminder_time'];
           final DateTime newScheduledDate = DateTime.parse(newScheduledTimeStr);
-
           if (newScheduledDate.isAfter(DateTime.now())) {
-            NotificationService.showSuccessSnackBar(
-                '📅 Received new scheduled time: $newScheduledDate');
             await scheduleReminderNotification(
               reminderId: reminderId,
               title: reminderData['title'] as String? ?? 'تذكير',
@@ -795,29 +583,19 @@ class NotificationService {
               },
             );
             return;
-          } else {
-            NotificationService.showErrorSnackBar(
-                '❌ New scheduled time is also in the past: $newScheduledDate');
           }
         } catch (e) {
-          NotificationService.showErrorSnackBar('❌ Error rescheduling: $e');
+          // تم حذف الـ SnackBar
         }
-
-        NotificationService.showErrorSnackBar(
-            '❌ Will not schedule reminder $reminderId');
         return;
       }
 
-      final title = reminderData['title'] as String? ?? 'تذكير';
-      final url = reminderData['url'] as String? ?? '';
-      final importance = reminderData['importance'] as String? ?? 'day';
-
       await scheduleReminderNotification(
         reminderId: reminderId,
-        title: title,
-        url: url,
+        title: reminderData['title'] as String? ?? 'تذكير',
+        url: reminderData['url'] as String? ?? '',
         scheduledDate: scheduledDate,
-        importance: importance,
+        importance: reminderData['importance'] as String? ?? 'day',
         additionalPayload: {
           'content': reminderData['content']?.toString() ?? '',
           'imageUrl': reminderData['image_url']?.toString() ?? '',
@@ -828,12 +606,6 @@ class NotificationService {
           'domain': reminderData['domain']?.toString() ?? '',
         },
       );
-
-      NotificationService.showSuccessSnackBar(
-          '✅ Updated reminder $reminderId for time: $nextReminderTimeStr');
-    } else {
-      NotificationService.showWarningSnackBar(
-          '⚠️ Cannot update notifications: Missing next_reminder_time');
     }
   }
 
@@ -841,7 +613,6 @@ class NotificationService {
     final notificationMap = await _getNotificationMap();
     final notificationIds = notificationMap[reminderId] ?? [];
     List<DateTime> scheduledTimes = [];
-
     for (final id in notificationIds) {
       final notifications =
           await AwesomeNotifications().listScheduledNotifications();
@@ -863,31 +634,20 @@ class NotificationService {
         }
       }
     }
-
     return scheduledTimes;
   }
 
   Future<void> cancelAllNotifications() async {
-    NotificationService.showSuccessSnackBar(
-        '🧹 Canceling all notifications and tasks');
-
-    // إلغاء جميع الإنذارات عبر AlarmManager
     try {
       await platform.invokeMethod('cancelAllAlarms');
     } catch (e) {
-      NotificationService.showErrorSnackBar(
-          '❌ Error cancelling all alarms: $e');
+      // تم حذف الـ SnackBar
     }
-
     await AwesomeNotifications().cancelAll();
     await Workmanager().cancelAll();
-
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('notification_map');
     await prefs.remove('follow_up_tasks');
-
-    NotificationService.showSuccessSnackBar(
-        '✅ Successfully canceled all notifications and tasks');
   }
 
   Future<bool> checkPermissions() async {
@@ -919,26 +679,15 @@ class NotificationService {
   Future<Map<String, dynamic>> getServiceStatus() async {
     final notificationMap = await _getNotificationMap();
     final followUpTasks = await _getFollowUpTasks();
-
     return {
       'activeReminders': notificationMap.length,
       'scheduledFollowUps': followUpTasks.length,
-      'markAsReadSystem': 'enabled', // مؤشر جديد
+      'markAsReadSystem': 'enabled',
     };
   }
 
   void printStatus() {
-    NotificationService.showSuccessSnackBar(
-        '📊 === Notification Service Status ===');
-    NotificationService.showSuccessSnackBar('🔔 Notification service active');
-    NotificationService.showSuccessSnackBar(
-        '⚙️ WorkManager integration enabled');
-    NotificationService.showSuccessSnackBar('🌐 API reschedule calls enabled');
-    NotificationService.showSuccessSnackBar(
-        '📖 MarkReminderAsRead system enabled'); // سطر جديد
-    NotificationService.showSuccessSnackBar(
-        '⏱️ Delayed processing: 10 seconds'); // سطر جديد
-    NotificationService.showSuccessSnackBar('================================');
+    // تم حذف جميع الـ SnackBars داخل هذه الدالة
   }
 
   Future<void> updateNotificationChannel() async {
@@ -946,11 +695,8 @@ class NotificationService {
     final soundEnabled = prefs.getBool('notification_sound_enabled') ?? true;
     final vibrationEnabled =
         prefs.getBool('notification_vibration_enabled') ?? true;
-    final wakeUpScreen = prefs.getBool('notification_wake_screen') ?? true;
-    final preciseAlarms = prefs.getBool('notification_precise_alarms') ?? true;
 
     await AwesomeNotifications().removeChannel('scheduled_channel');
-
     await AwesomeNotifications().setChannel(
       NotificationChannel(
         channelKey: 'scheduled_channel',
@@ -965,109 +711,23 @@ class NotificationService {
         enableVibration: vibrationEnabled,
       ),
     );
-
-    NotificationService.showSuccessSnackBar(
-        '✅ Updated notification channel with new settings');
   }
 
   void dispose() {
-    NotificationService.showSuccessSnackBar(
-        '🧹 Cleaning up notification service...');
     Workmanager().cancelAll();
-    NotificationService.showSuccessSnackBar('✅ All resources cleaned up');
   }
 
   bool _isValidScheduledTime(DateTime scheduledDate, int reminderId) {
     final now = DateTime.now();
     final difference = scheduledDate.difference(now);
-
-    NotificationService.showSuccessSnackBar('🕐 Current time: $now');
-    NotificationService.showSuccessSnackBar(
-        '📅 Scheduled time: $scheduledDate');
-    NotificationService.showSuccessSnackBar(
-        '⏰ Time difference: ${difference.inMinutes} minutes');
-
     if (difference.isNegative) {
-      NotificationService.showErrorSnackBar(
-          '❌ Time is in the past for reminder $reminderId');
       return false;
     }
-
     if (difference.inSeconds < 30) {
-      NotificationService.showWarningSnackBar(
-          '⚠️ Time is too close (less than 30 seconds) for reminder $reminderId');
       return false;
     }
-
-    NotificationService.showSuccessSnackBar(
-        '✅ Time is valid for scheduling reminder $reminderId');
     return true;
   }
+
   
-  // دالة جديدة لمعالجة رسائل FCM مع التركيز على data
-  static Future<void> handleFcmDataMessage(Map<String, dynamic> data) async {
-    try {
-      final title = data['title']?.toString().trim() ?? 'تذكير';
-      final body = data['body']?.toString().trim() ?? 'لديك تذكير جديد';
-      final reminderIdStr = data['reminderId']?.toString() ?? '';
-      final int? reminderId = reminderIdStr.isNotEmpty ? int.tryParse(reminderIdStr) : null;
-      final operation = data['operation']?.toString().trim() ?? '';
-      final url = data['url']?.toString() ?? '';
-      
-      print('📬 Handling FCM data message');
-      print('Title: $title');
-      print('Body: $body');
-      print('Reminder ID: $reminderId');
-      print('Operation: $operation');
-      print('URL: $url');
-      
-      // إذا كان هناك معرف تذكير، قم بمعالجته
-      if (reminderId != null && reminderId > 0) {
-        final remindersNotifier = RemindersNotifier.instance;
-        if (remindersNotifier != null) {
-          switch (operation.toLowerCase().trim()) {
-            case 'reschedule':
-              await remindersNotifier.handleRescheduleFromFcm(reminderId);
-              break;
-            case 'update':
-              await remindersNotifier.handleUpdateFromFcm(reminderId);
-              break;
-            case 'new':
-              await remindersNotifier.handleNewReminderFromFcm(reminderId);
-              break;
-            case 'markas_read':
-            case 'mark_as_read':
-              await remindersNotifier.handleMarkAsReadFromFcm(reminderId);
-              break;
-            case 'delete':
-              await remindersNotifier.deleteReminderComprehensive(reminderId);
-              break;
-            default:
-              print('⚠️ Unknown operation: $operation');
-          }
-        }
-      }
-      
-      // إنشاء إشعار محلي
-      await AwesomeNotifications().createNotification(
-        content: NotificationContent(
-          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-          channelKey: 'scheduled_channel',
-          title: title,
-          body: body,
-          category: NotificationCategory.Reminder,
-          notificationLayout: NotificationLayout.Default,
-          payload: {
-            'id': reminderId?.toString() ?? '',
-            'url': url,
-            'operation': operation,
-          },
-          criticalAlert: true,
-          locked: true,
-        ),
-      );
-    } catch (e) {
-      print('❌ Error handling FCM data message: $e');
-    }
-  }
 }

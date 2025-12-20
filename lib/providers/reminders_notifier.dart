@@ -921,85 +921,89 @@ class RemindersNotifier extends ChangeNotifier {
   // دوال FCM والتحديثات
   // ============================================================================
 
+ // ============================================================================
+  // دوال FCM والتحديثات
+  // ============================================================================
+
   /// معالجة بيانات FCM
   Future<void> handleFcmData(Map<String, dynamic> data) async {
     try {
-      String action = data['action']?.toString().trim() ?? '';
-      final String postId = data['post_id']?.toString() ?? '';
+      // 1. استخراج المعرف (ID) وتحويله إلى رقم
+      // نفترض أن title يحمل الـ ID بناءً على الكود السابق، أو يمكن استخدام 'id' أو 'post_id'
+      final String idString = data['body']?.toString() ?? data['id']?.toString() ?? '';
+      final int? reminderId = int.tryParse(idString);
       
-      if (action.isEmpty) {
-        action = data['operation']?.toString().trim() ?? 'update';
-      }
-      
-      if (postId.isEmpty) {
+      if (reminderId == null) {
         return;
       }
+
+      String action = data['event_type']?.toString().trim() ?? '';
+      final actionLower = action.toLowerCase().trim();
       
-      int? reminderId;
-      try {
-        reminderId = int.parse(postId);
-      } catch (e) {
-        return;
+      // إذا كان الإجراء حذف، لا نحتاج لجلب البيانات من السيرفر (قد تكون حذفت بالفعل)
+      if (actionLower == 'delete') {
+         // نتحقق إذا كان موجود محلياً لحذفه
+         bool existsLocally = _readReminders.any((r) => r.id == reminderId) ||
+                              _unreadReminders.any((r) => r.id == reminderId);
+         if (existsLocally) {
+            await deleteReminderComprehensive(reminderId);
+         }
+         return;
       }
-      
+
+      // 2. جلب بيانات التذكير مرة واحدة فقط كما طلبت
+      final Reminder updatedReminder = await _service.getReminderById(reminderId);
+
+      // التحقق من صحة البيانات المرجعة
+      if (updatedReminder.id != reminderId) {
+        return; 
+      }
+
       bool existsLocally = _readReminders.any((r) => r.id == reminderId) ||
                            _unreadReminders.any((r) => r.id == reminderId);
       
-      final actionLower = action.toLowerCase().trim();
-      
+      // 3. اختيار الحالة المناسبة وتمرير الكائن updatedReminder
       switch (actionLower) {
-        case 'reminder_updated':
         case 'update':
           if (existsLocally) {
-            await handleUpdateFromFcm(reminderId);
+            await handleUpdateFromFcm(updatedReminder);
           } else {
-            await handleNewReminderFromFcm(reminderId);
+            await handleNewReminderFromFcm(updatedReminder);
           }
           break;
           
         case 'reschedule':
           if (existsLocally) {
-            await handleRescheduleFromFcm(reminderId);
+            await handleRescheduleFromFcm(updatedReminder);
           } else {
-            await handleNewReminderFromFcm(reminderId);
+            await handleNewReminderFromFcm(updatedReminder);
           }
           break;
           
         case 'new':
-          await handleNewReminderFromFcm(reminderId);
+          await handleNewReminderFromFcm(updatedReminder);
           break;
           
-        case 'markas_read':
         case 'mark_as_read':
           if (existsLocally) {
+            // نمرر الـ ID فقط هنا لأن الدالة تعتمد على الحذف المحلي والنقل
             await handleMarkAsReadFromFcm(reminderId);
           } else {
-            try {
-              final reminder = await _service.getReminderById(reminderId);
-              
-              if (reminder.id == reminderId && reminder.isOpened == 1) {
-                _readReminders.add(reminder);
-                _readReminders.sort((a, b) => b.id.compareTo(a.id));
-                await _service.updateCachedReminder(reminder, _currentPage);
-                notifyListeners();
-              }
-            } catch (e) {
-              // Handle error silently
+            // إذا لم يكن موجوداً محلياً وجاء أمر بأنه مقروء، نضيفه للمقروء مباشرة
+            if (updatedReminder.isOpened == 1) {
+              _readReminders.add(updatedReminder);
+              _readReminders.sort((a, b) => b.id.compareTo(a.id));
+              await _service.updateCachedReminder(updatedReminder, _currentPage);
+              notifyListeners();
             }
-          }
-          break;
-          
-        case 'delete':
-          if (existsLocally) {
-            await deleteReminderComprehensive(reminderId);
           }
           break;
           
         default:
           if (existsLocally) {
-            await handleUpdateFromFcm(reminderId);
+            await handleUpdateFromFcm(updatedReminder);
           } else {
-            await handleNewReminderFromFcm(reminderId);
+            await handleNewReminderFromFcm(updatedReminder);
           }
       }
       
@@ -1008,28 +1012,92 @@ class RemindersNotifier extends ChangeNotifier {
     }
   }
 
-  /// معالجة تحديث من FCM
-  Future<void> handleUpdateFromFcm(int reminderId, {bool isBackground = false}) async {
+  /// معالجة تحديث من FCM - تم التعديل لاستقبال Reminder
+  Future<void> handleUpdateFromFcm(Reminder updatedReminder, {bool isBackground = false}) async {
     try {
-      final updatedReminder = await _service.getReminderById(reminderId);
+      final reminderId = updatedReminder.id;
 
-      if (updatedReminder.id == reminderId) {
-        _readReminders.removeWhere((r) => r.id == reminderId);
-        _unreadReminders.removeWhere((r) => r.id == reminderId);
-        
+      _readReminders.removeWhere((r) => r.id == reminderId);
+      _unreadReminders.removeWhere((r) => r.id == reminderId);
+      
+      final targetList =
+          updatedReminder.isOpened == 1 ? _readReminders : _unreadReminders;
+      targetList.add(updatedReminder);
+      targetList.sort((a, b) => b.id.compareTo(a.id));
+      
+      await _service.cancelReminderNotification(reminderId);
+      if (updatedReminder.isOpened != 1) {
+        await _service.scheduleReminderNotifications(updatedReminder);
+      }
+      await _service.updateCachedReminder(updatedReminder, _currentPage);
+      
+      _lastFcmUpdate = DateTime.now();
+
+      if (!isBackground) {
+        await forceSaveCurrentState();
+        notifyListeners();
+      }
+    } catch (e) {
+      // Handle error silently
+    }
+  }
+
+  /// معالجة تذكير جديد من FCM - تم التعديل لاستقبال Reminder
+  Future<void> handleNewReminderFromFcm(Reminder reminder, {bool isBackground = false}) async {
+    try {
+      final reminderId = reminder.id;
+      bool exists = _readReminders.any((r) => r.id == reminderId) ||
+          _unreadReminders.any((r) => r.id == reminderId);
+
+      if (exists) {
+        await handleUpdateFromFcm(reminder, isBackground: isBackground);
+      } else {
         final targetList =
-            updatedReminder.isOpened == 1 ? _readReminders : _unreadReminders;
-        targetList.add(updatedReminder);
-        targetList.sort((a, b) => b.id.compareTo(a.id));
+            reminder.isOpened == 1 ? _readReminders : _unreadReminders;
         
-        await _service.cancelReminderNotification(reminderId);
-        if (updatedReminder.isOpened != 1) {
-          await _service.scheduleReminderNotifications(updatedReminder);
+        if (!targetList.any((r) => r.id == reminder.id)) {
+          targetList.add(reminder);
+          targetList.sort((a, b) => b.id.compareTo(a.id));
+          await _service.updateCachedReminder(reminder, _currentPage);
         }
-        await _service.updateCachedReminder(updatedReminder, _currentPage);
         
         _lastFcmUpdate = DateTime.now();
 
+        if (reminder.isOpened != 1) {
+          try {
+            await _service.scheduleReminderNotifications(reminder);
+          } catch (e) {
+            // Handle background error silently
+          }
+        }
+        
+        if (!isBackground) notifyListeners();
+      }
+    } catch (e) {
+      // Handle error silently
+    }
+  }
+
+  /// معالجة إعادة جدولة من FCM - تم التعديل لاستقبال Reminder
+  Future<void> handleRescheduleFromFcm(Reminder updatedReminder, {bool isBackground = false}) async {
+    try {
+      final reminderId = updatedReminder.id;
+
+      bool foundInRead = _readReminders.any((r) => r.id == reminderId);
+      bool foundInUnread = _unreadReminders.any((r) => r.id == reminderId);
+
+      if (foundInRead || foundInUnread) {
+        _readReminders.removeWhere((r) => r.id == reminderId);
+        _unreadReminders.removeWhere((r) => r.id == reminderId);
+
+        // في إعادة الجدولة عادة يعود إلى غير المقروء إلا إذا نص السيرفر على غير ذلك
+        // هنا نلتزم بما جاء من السيرفر في updatedReminder
+        final targetList = updatedReminder.isOpened == 1 ? _readReminders : _unreadReminders;
+        targetList.add(updatedReminder);
+        targetList.sort((a, b) => b.id.compareTo(a.id));
+
+        await _service.updateCachedReminder(updatedReminder, _currentPage);
+        
         if (!isBackground) {
           await forceSaveCurrentState();
           notifyListeners();
@@ -1040,46 +1108,7 @@ class RemindersNotifier extends ChangeNotifier {
     }
   }
 
-  /// معالجة تذكير جديد من FCM
-  Future<void> handleNewReminderFromFcm(int reminderId, {bool isBackground = false}) async {
-    try {
-      bool exists = _readReminders.any((r) => r.id == reminderId) ||
-          _unreadReminders.any((r) => r.id == reminderId);
-
-      if (exists) {
-        await handleUpdateFromFcm(reminderId, isBackground: isBackground);
-      } else {
-        final reminder = await _service.getReminderById(reminderId);
-
-        if (reminder.id == reminderId) {
-          final targetList =
-              reminder.isOpened == 1 ? _readReminders : _unreadReminders;
-          
-          if (!targetList.any((r) => r.id == reminder.id)) {
-            targetList.add(reminder);
-            targetList.sort((a, b) => b.id.compareTo(a.id));
-            await _service.updateCachedReminder(reminder, _currentPage);
-          }
-          
-          _lastFcmUpdate = DateTime.now();
-
-          if (reminder.isOpened != 1) {
-            try {
-              await _service.scheduleReminderNotifications(reminder);
-            } catch (e) {
-              // Handle background error silently
-            }
-          }
-          
-          if (!isBackground) notifyListeners();
-        }
-      }
-    } catch (e) {
-      // Handle error silently
-    }
-  }
-
-  /// معالجة وضع علامة كمقروء من FCM
+  /// معالجة وضع علامة كمقروء من FCM (لم تتغير التوقيع لأنها تعتمد على المنطق المحلي غالباً)
   Future<void> handleMarkAsReadFromFcm(int reminderId, {bool isBackground = false}) async {
     try {
       final reminderIndex =
@@ -1111,34 +1140,6 @@ class RemindersNotifier extends ChangeNotifier {
     }
   }
 
-  /// معالجة إعادة جدولة من FCM
-  Future<void> handleRescheduleFromFcm(int reminderId, {bool isBackground = false}) async {
-    try {
-      final updatedReminder = await _service.getReminderById(reminderId);
-
-      if (updatedReminder.id == reminderId) {
-        bool foundInRead = _readReminders.any((r) => r.id == reminderId);
-        bool foundInUnread = _unreadReminders.any((r) => r.id == reminderId);
-
-        if (foundInRead || foundInUnread) {
-          _readReminders.removeWhere((r) => r.id == reminderId);
-          _unreadReminders.removeWhere((r) => r.id == reminderId);
-
-          _unreadReminders.add(updatedReminder);
-          _unreadReminders.sort((a, b) => b.id.compareTo(a.id));
-
-          await _service.updateCachedReminder(updatedReminder, _currentPage);
-          
-          if (!isBackground) {
-            await forceSaveCurrentState();
-            notifyListeners();
-          }
-        }
-      }
-    } catch (e) {
-      // Handle error silently
-    }
-  }
 
   /// معالجة استجابة getReminderById
   Future<void> handleGetReminderByIdResponse(

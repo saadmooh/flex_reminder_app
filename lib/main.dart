@@ -272,8 +272,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       },
       body: jsonEncode({
         'message_id': message.messageId,
-        'title': message.notification?.title ?? 'No title',
-        'body': message.notification?.body ?? 'No body',
+      
         'data': message.data,
         'sent_time': message.sentTime?.toIso8601String(),
         'received_at_background': DateTime.now().toIso8601String(),

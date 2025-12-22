@@ -1,12 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart'; // ✅ إضافة الاستيراد المفقود
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../utils/consts.dart'; // ✅ تأكد من وجود هذا الملف والثابت
+import '../../utils/consts.dart';
 import 'package:flex_reminder/models/reminder.dart';
 import 'package:flex_reminder/models/reminders_response.dart';
 import 'package:flex_reminder/services/api_service.dart';
 import 'package:flex_reminder/services/notification_service.dart';
+import 'package:http/http.dart' as http;
 
 /// Service للتعامل مع منطق الأعمال والعمليات الخلفية للتذكيرات
 class RemindersService {
@@ -14,7 +15,7 @@ class RemindersService {
   // Singleton Pattern
   // ============================================================================
   static RemindersService? _instance;
-  
+
   static RemindersService get instance {
     _instance ??= RemindersService._internal();
     return _instance!;
@@ -27,26 +28,22 @@ class RemindersService {
   // ============================================================================
   // الخدمات والثوابت
   // ============================================================================
-  
-  // ✅ إضافة متغير التخزين الآمن
+
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
 
-  // Getter للوصول إلى التخزين (اختياري، يمكنك استخدام _storage مباشرة)
   FlutterSecureStorage get storage => _storage;
-  
-  // علم للتحقق من التهيئة
+
   bool _isInitializedForBackground = false;
-  
-  // Instances قابلة للتبديل
+
   ApiService? _apiServiceInstance;
   NotificationService? _notificationServiceInstance;
-  
+
   // Getters للخدمات مع Lazy initialization
   ApiService get _apiService {
     _apiServiceInstance ??= ApiService();
     return _apiServiceInstance!;
   }
-  
+
   NotificationService get _notificationService {
     _notificationServiceInstance ??= NotificationService();
     return _notificationServiceInstance!;
@@ -66,37 +63,43 @@ class RemindersService {
   /// تهيئة الخدمات للعمل في Background Isolate
   Future<void> initializeForBackground() async {
     if (_isInitializedForBackground) {
-      return; // تم التهيئة مسبقاً
+      debugPrint('⚠️ RemindersService already initialized for background, skipping...');
+      return;
     }
 
     try {
       debugPrint('🔧 Initializing RemindersService for Background...');
-      
-      // 1. تهيئة NotificationService (مهم للإشعارات)
-      _notificationServiceInstance = NotificationService();
-      await _notificationServiceInstance!.init();
-      
-      // 2. تهيئة ApiService
+
+      // ✅ إعادة تعيين الـ instances
+      _notificationServiceInstance = null;
+      _apiServiceInstance = null;
+
+      // ✅ تهيئة NotificationService للـ background
+      final notificationService = NotificationService();
+      await notificationService.initializeForBackground();
+      _notificationServiceInstance = notificationService;
+
+      // ✅ تهيئة ApiService
       _apiServiceInstance = ApiService();
-      
-      // 3. التحقق من وجود Token مباشرة من التخزين الآمن
-      // ✅ تم تعديل هذا الجزء ليتطابق مع الكود الذي يسبب الخطأ
-      final token = await _storage.read(key: AppConstants.AUTH_TOKEN_KEY);
-      if (token == null || token.isEmpty) {
-        debugPrint('⚠️ No auth token found in background - API calls may fail');
-      } else {
-        debugPrint('✅ Auth token found - API calls enabled');
-      }
 
       _isInitializedForBackground = true;
       debugPrint('✅ RemindersService background initialization complete');
       
-    } catch (e) {
-      debugPrint('❌ Background initialization error: $e');
-      // في حالة الفشل، استخدم الـ instances الافتراضية
-      _apiServiceInstance ??= ApiService();
-      _notificationServiceInstance ??= NotificationService();
-      _isInitializedForBackground = true; // اعتبرها مهيأة لتجنب إعادة المحاولة
+    } catch (e, stackTrace) {
+      debugPrint('❌ RemindersService background initialization error: $e');
+      debugPrint('Stack trace: $stackTrace');
+      
+      // ✅ Fallback: محاولة أخيرة
+      try {
+        _notificationServiceInstance = NotificationService();
+        await _notificationServiceInstance!.initializeForBackground();
+        _apiServiceInstance = ApiService();
+        _isInitializedForBackground = true;
+        debugPrint('✅ Fallback initialization successful');
+      } catch (retryError) {
+        debugPrint('❌ Fallback initialization also failed: $retryError');
+        rethrow;
+      }
     }
   }
 
@@ -113,7 +116,6 @@ class RemindersService {
   // دوال التخزين المؤقت (Cache)
   // ============================================================================
 
-  /// تحميل التذكيرات من الصفحة المحددة من التخزين المؤقت
   Future<List<Reminder>> loadCachedReminders(int page) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -139,7 +141,6 @@ class RemindersService {
     return [];
   }
 
-  /// حفظ التذكيرات في صفحة معينة في التخزين المؤقت
   Future<void> cacheRemindersForPage(int page, List<Reminder> reminders) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -154,7 +155,6 @@ class RemindersService {
     }
   }
 
-  /// تحديث تذكير معين في التخزين المؤقت
   Future<void> updateCachedReminder(Reminder updatedReminder, int currentPage) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -193,7 +193,6 @@ class RemindersService {
     }
   }
 
-  /// إضافة تذكير إلى الصفحة الأولى
   Future<void> addReminderToFirstPage(Reminder reminder) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -222,7 +221,6 @@ class RemindersService {
     }
   }
 
-  /// حذف تذكير من التخزين المؤقت
   Future<void> removeCachedReminder(int reminderId, int currentPage, int totalReminders) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -248,7 +246,6 @@ class RemindersService {
     }
   }
 
-  /// حذف تذكير من التخزين المؤقت (نسخة بديلة)
   Future<void> deleteCachedReminder(int id, int currentPage) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -269,7 +266,6 @@ class RemindersService {
     }
   }
 
-  /// حفظ بيانات الفلاتر في التخزين المؤقت
   Future<void> saveCachedData(RemindersResponse response) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -283,7 +279,6 @@ class RemindersService {
     }
   }
 
-  /// تحميل الفلاتر من التخزين المؤقت
   Future<Map<String, List<String>>> loadFiltersFromCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -314,7 +309,6 @@ class RemindersService {
     }
   }
 
-  /// تنظيف التخزين المؤقت من البيانات غير الصالحة
   Future<void> cleanupCache(int currentPage) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -345,7 +339,6 @@ class RemindersService {
     }
   }
 
-  /// تنظيف التذكيرات المخزنة مؤقتاً
   Future<void> cleanupCachedReminders(int currentPage) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -368,7 +361,6 @@ class RemindersService {
     }
   }
 
-  /// طباعة محتويات التخزين المؤقت للتصحيح
   Future<void> debugCacheContents(int currentPage) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -389,7 +381,6 @@ class RemindersService {
     }
   }
 
-  /// اختبار اتساق التخزين المؤقت
   Future<void> testCacheConsistency(
     int currentPage,
     List<Reminder> memoryReminders,
@@ -425,7 +416,6 @@ class RemindersService {
     }
   }
 
-  /// حفظ الحالة الحالية فوراً
   Future<void> forceSaveCurrentState(
     List<Reminder> allReminders,
     int totalReminders,
@@ -442,19 +432,16 @@ class RemindersService {
     }
   }
 
-  /// مسح جميع بيانات التخزين المؤقت للجلسة
   Future<void> clearSessionCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // مسح البيانات المخزنة مؤقتاً
       await prefs.remove(_categoriesKey);
       await prefs.remove(_complexitiesKey);
       await prefs.remove(_domainsKey);
       await prefs.remove(_totalKey);
       await prefs.remove(_lastInitKey);
 
-      // مسح جميع صفحات التذكيرات المخزنة
       final keys = prefs.getKeys();
       for (final key in keys) {
         if (key.startsWith(_sessionRemindersKeyPrefix)) {
@@ -470,7 +457,6 @@ class RemindersService {
   // دوال الإشعارات
   // ============================================================================
 
-  /// جدولة إشعارات التذكير
   Future<void> scheduleReminderNotifications(Reminder reminder) async {
     try {
       if (reminder.nextReminderTime != null &&
@@ -499,7 +485,6 @@ class RemindersService {
     }
   }
 
-  /// إعادة جدولة جميع الإشعارات
   Future<void> rescheduleAllNotifications(List<Reminder> unreadReminders) async {
     try {
       await _notificationService.cancelAllNotifications();
@@ -511,7 +496,6 @@ class RemindersService {
     }
   }
 
-  /// إلغاء إشعار تذكير محدد
   Future<void> cancelReminderNotification(int reminderId) async {
     try {
       await _notificationService.cancelReminderNotifications(reminderId);
@@ -520,7 +504,6 @@ class RemindersService {
     }
   }
 
-  /// إلغاء جميع الإشعارات
   Future<void> cancelAllNotifications() async {
     try {
       await _notificationService.cancelAllNotifications();
@@ -529,23 +512,19 @@ class RemindersService {
     }
   }
 
-  /// تحديث إشعار تذكير
   Future<void> updateReminderNotification(Reminder reminder) async {
     try {
-      // تهيئة إذا لم تكن مهيأة
       if (!_isInitializedForBackground) {
         await initializeForBackground();
       }
-      
+
       await _notificationService.cancelReminderNotifications(reminder.id);
       await scheduleReminderNotifications(reminder);
     } catch (e) {
       debugPrint('Error updating reminder notification: $e');
-      // Handle error silently
     }
   }
 
-  /// تحديث إشعار من البيانات
   Future<void> updateReminderNotificationFromData(
       Map<String, dynamic> reminderData) async {
     try {
@@ -555,7 +534,6 @@ class RemindersService {
     }
   }
 
-  /// جدولة إشعارات للوضع غير المتصل
   Future<void> scheduleOfflineNotifications(List<Reminder> unreadReminders) async {
     try {
       await _notificationService.cancelAllNotifications();
@@ -580,7 +558,6 @@ class RemindersService {
     }
   }
 
-  /// تحديث قناة الإشعارات
   Future<void> updateNotificationChannel() async {
     try {
       await _notificationService.updateNotificationChannel();
@@ -589,7 +566,6 @@ class RemindersService {
     }
   }
 
-  /// التحقق من صلاحيات الإشعارات
   Future<bool> checkNotificationPermissions() async {
     try {
       return await _notificationService.checkPermissions();
@@ -598,7 +574,6 @@ class RemindersService {
     }
   }
 
-  /// طلب صلاحيات الإشعارات
   Future<bool> requestNotificationPermissions() async {
     try {
       return await _notificationService.requestPermissions();
@@ -607,7 +582,6 @@ class RemindersService {
     }
   }
 
-  /// الحصول على حالة خدمة الإشعارات
   Future<Map<String, dynamic>> getNotificationServiceStatus() async {
     try {
       return await _notificationService.getServiceStatus();
@@ -620,7 +594,6 @@ class RemindersService {
   // دوال إعادة الجدولة
   // ============================================================================
 
-  /// التحقق وإعادة جدولة التذكيرات غير المقروءة
   Future<List<Reminder>> checkAndRescheduleUnreadReminders(
     List<Reminder> unreadReminders,
   ) async {
@@ -684,7 +657,6 @@ class RemindersService {
   // دوال API
   // ============================================================================
 
-  /// التحقق من البريد الإلكتروني
   Future<void> verifyEmail(String email, String code) async {
     try {
       await _apiService.verifyEmail(email, code);
@@ -693,7 +665,6 @@ class RemindersService {
     }
   }
 
-  /// إعادة إرسال رمز التحقق
   Future<void> resendVerificationCode(String email) async {
     try {
       await _apiService.resendVerificationCode(email);
@@ -702,7 +673,6 @@ class RemindersService {
     }
   }
 
-  /// الحصول على تحليل إحصائيات المنشورات المفتوحة
   Future<Map<String, dynamic>> getOpenedStatsAnalysis() async {
     try {
       final response = await _apiService.getOpenedStatsAnalysis();
@@ -717,7 +687,6 @@ class RemindersService {
     }
   }
 
-  /// الحصول على إحصائيات المنشورات المحفوظة
   Future<Map<String, dynamic>> getSavedPostStatistics() async {
     try {
       final response = await _apiService.getSavedPostStatistics();
@@ -733,7 +702,6 @@ class RemindersService {
     }
   }
 
-  /// إعادة جدولة منشور
   Future<Map<String, dynamic>> reschedulePost(String url, String importance) async {
     try {
       return await _apiService.reschedulePost(url, importance);
@@ -742,7 +710,6 @@ class RemindersService {
     }
   }
 
-  /// حفظ منشور جديد
   Future<Map<String, dynamic>> savePost(Map<String, dynamic> postData) async {
     try {
       return await _apiService.savePost(postData);
@@ -751,7 +718,6 @@ class RemindersService {
     }
   }
 
-  /// تحديث تذكير
   Future<Map<String, dynamic>> updateReminder(Reminder reminder) async {
     try {
       return await _apiService.updateReminder(reminder);
@@ -760,7 +726,6 @@ class RemindersService {
     }
   }
 
-  /// حذف تذكير
   Future<void> deleteReminder(int id) async {
     try {
       await _apiService.deleteReminder(id);
@@ -769,7 +734,6 @@ class RemindersService {
     }
   }
 
-  /// الحصول على تذكير بواسطة المعرف
   Future<Reminder> getReminderById(int reminderId) async {
     try {
       return await _apiService.getReminderById(reminderId);
@@ -778,7 +742,6 @@ class RemindersService {
     }
   }
 
-  /// جلب التذكيرات من API
   Future<RemindersResponse> fetchReminders({
     int page = 1,
     String searchQuery = '',
@@ -803,7 +766,6 @@ class RemindersService {
     }
   }
 
-  /// تحديث إحصائيات الرابط
   Future<void> updateStats(String url, bool opened) async {
     try {
       await _apiService.updateStats(url, opened);
@@ -812,7 +774,6 @@ class RemindersService {
     }
   }
 
-  /// الحصول على معرفات التذكيرات
   Future<List<int>> getRemindersIds() async {
     try {
       return await _apiService.getRemindersIds();
@@ -825,7 +786,6 @@ class RemindersService {
   // دوال المساعدة
   // ============================================================================
 
-  /// التحقق من أن التذكير أحدث
   bool isReminderNewer(Reminder reminder1, Reminder reminder2) {
     try {
       if (reminder1.updatedAt != null && reminder2.updatedAt != null) {
@@ -839,7 +799,6 @@ class RemindersService {
     }
   }
 
-  /// تحميل معرف المستخدم
   Future<String?> loadUserId() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -849,7 +808,6 @@ class RemindersService {
     }
   }
 
-  /// التحقق من وجود بيانات محلية
   Future<bool> hasOfflineData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -872,7 +830,6 @@ class RemindersService {
     }
   }
 
-  /// التحقق من وجود تذكير في التخزين المؤقت
   Future<bool> reminderExistsInCache(int reminderId, int currentPage) async {
     final prefs = await SharedPreferences.getInstance();
     int page = 1;
@@ -895,7 +852,6 @@ class RemindersService {
     return false;
   }
 
-  /// حفظ وقت آخر تهيئة
   Future<void> saveLastInitialization(DateTime timestamp) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -905,91 +861,6 @@ class RemindersService {
     }
   }
 
-  // ============================================================================
-  // Background FCM Handling (NO UI – SAFE FOR BACKGROUND)
-  // ============================================================================
-
-  /// معالجة تحديث التذكير في الخلفية (يُستدعى من FCM Background Handler)
-  // ============================================================================
-  // Background FCM Handling (NO UI – SAFE FOR BACKGROUND)
-  // ============================================================================
-
-  /// معالجة تحديث التذكير في الخلفية بشكل مشابه لـ handleFcmData
-  /// معالجة تحديث التذكير في الخلفية (يُستدعى من FCM Background Handler)
-/// آمنة تماماً للتشغيل في Background Isolate (لا تستخدم UI أو notifyListeners)
-Future<void> handleReminderUpdateInBackground(Map<String, dynamic> data) async {
-  try {
-    debugPrint('📨 [Background] Processing FCM data for reminder update...');
-
-     // 1. تهيئة الخدمات في الخلفية (ضروري للـ API والإشعارات)
-    await initializeForBackground();
-
-    // 2. استخراج الـ reminderId
-    // افتراض: الـ ID يأتي في حقل 'userId' أو 'id' أو 'post_id' أو 'title' (حسب ما ترسله الـ backend)
-    final String idString = data['body'].toString();
-                            
-
-    // FIX: Changed the type to int? to match the return type of int.tryParse()
-    final int? reminderId = int.tryParse(idString);
-
-    if (reminderId == null || reminderId == 0) {
-      debugPrint('⚠️ [Background] Invalid or missing reminder ID in FCM data');
-      return;
-    }
-
-    // 3. استخراج الإجراء (action) إن وُجد
-    final String rawAction = (data['event_type'] ??  '').toString().trim();
-    final String action = rawAction.toLowerCase();
-
-    debugPrint('🔔 [Background] Reminder ID: $reminderId | Action: $action');
-
-    // 4. حالة الحذف: لا نحتاج لجلب البيانات من السيرفر
-    if (action == 'delete') {
-      await removeCachedReminder(reminderId, 1, 0); // نستخدم 1 كـ currentPage افتراضي
-      await cancelReminderNotification(reminderId);
-      debugPrint('✅ [Background] Reminder $reminderId deleted (cache + notification)');
-      return;
-    }
-
-    // 5. جلب التذكير المُحدث من السيرفر (مرة واحدة فقط)
-    late Reminder updatedReminder;
-    try {
-      updatedReminder = await _apiService.getReminderById(reminderId);
-    } catch (e) {
-      debugPrint('❌ [Background] Failed to fetch reminder $reminderId from server: $e');
-      return;
-    }
-
-    // التحقق من تطابق الـ ID
-    if (updatedReminder.id != reminderId) {
-      debugPrint('⚠️ [Background] Mismatched reminder ID from server');
-      return;
-    }
-
-    // 6. تحديث الكاش المحلي
-    // نستخدم currentPage = 1 كافتراضي في الخلفية (لأننا لا نعرف الصفحة الحقيقية)
-    await updateCachedReminder(updatedReminder, 1);
-
-    // 7. إدارة الإشعارات
-    await cancelReminderNotification(reminderId);
-
-    if (updatedReminder.isOpened != 1) {
-      // التذكير غير مقروء → نجدوله
-      await scheduleReminderNotifications(updatedReminder);
-      debugPrint('✅ [Background] Notification scheduled for reminder $reminderId');
-    } else {
-      debugPrint('ℹ️ [Background] Reminder $reminderId is marked as read – notification cancelled');
-    }
-
-    debugPrint('🎉 [Background] Reminder $reminderId processed successfully');
-
-  } catch (e, stackTrace) {
-    debugPrint('❌ [Background] Error in handleReminderUpdateInBackground: $e');
-    debugPrint(stackTrace.toString());
-    // لا نُلقي الخطأ هنا لأننا في background handler
-  }
-}
-  /// تحميل وقت آخر تهيئة
   Future<DateTime?> loadLastInitialization() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1000,6 +871,124 @@ Future<void> handleReminderUpdateInBackground(Map<String, dynamic> data) async {
       return null;
     } catch (e) {
       return null;
+    }
+  }
+
+  // ============================================================================
+  // Background FCM Handling
+  // ============================================================================
+
+  Future<void> handleReminderUpdateInBackground(Map<String, dynamic> data) async {
+    try {
+      debugPrint('📱 [Background] Starting handleReminderUpdateInBackground');
+      debugPrint('📱 [Background] FCM Data: $data');
+      
+      // ✅ 1. إعادة تعيين + تهيئة الخدمات
+      _isInitializedForBackground = false; // إجبار إعادة التهيئة
+      await initializeForBackground();
+
+      // ✅ 2. التحقق من التهيئة
+      if (_notificationServiceInstance == null) {
+        debugPrint('❌ [Background] NotificationService is null after initialization');
+        return;
+      }
+
+      debugPrint('✅ [Background] Services initialized successfully');
+
+      // 3. استخراج reminderId
+      final String idString = data['body']?.toString() ?? '';
+      final int? reminderId = int.tryParse(idString);
+
+      if (reminderId == null || reminderId == 0) {
+        debugPrint('⚠️ [Background] Invalid reminder ID: $idString');
+        return;
+      }
+
+      debugPrint('✅ [Background] Processing reminder ID: $reminderId');
+
+      // 4. استخراج الإجراء
+      final String rawAction = (data['event_type'] ?? '').toString().trim();
+      final String action = rawAction.toLowerCase();
+      debugPrint('📌 [Background] Action: $action');
+
+      // 5. حالة الحذف
+      if (action == 'delete') {
+        debugPrint('🗑️ [Background] Deleting reminder $reminderId...');
+        
+        await cancelReminderNotification(reminderId);
+        await removeCachedReminder(reminderId, 1, 0);
+        
+        debugPrint('✅ [Background] Reminder $reminderId deleted successfully');
+        await _sendBackgroundConfirmation(data, reminderId, 'deleted_successfully');
+        return;
+      }
+
+      // 6. جلب التذكير المحدث من API
+      debugPrint('🔄 [Background] Fetching reminder $reminderId from API...');
+      final Reminder updatedReminder = await _apiService.getReminderById(reminderId);
+      debugPrint('✅ [Background] Reminder fetched: ${updatedReminder.title}');
+
+      // 7. إلغاء الإشعارات القديمة
+      debugPrint('🔕 [Background] Canceling old notifications for reminder $reminderId...');
+      await cancelReminderNotification(reminderId);
+
+      // 8. جدولة الإشعارات الجديدة
+      debugPrint('🔔 [Background] Scheduling new notifications for reminder $reminderId...');
+      await scheduleReminderNotifications(updatedReminder);
+
+      // 9. تحديث الكاش
+      debugPrint('💾 [Background] Updating cache for reminder $reminderId...');
+      await updateCachedReminder(updatedReminder, 1);
+
+      // 10. إرسال تأكيد للـ Backend
+      debugPrint('📤 [Background] Sending confirmation to backend...');
+      await _sendBackgroundConfirmation(data, reminderId, 'processed_successfully');
+
+      debugPrint('🎉 [Background] Reminder $reminderId processed successfully');
+      
+    } catch (e, stackTrace) {
+      debugPrint('❌ [Background] Error in handleReminderUpdateInBackground: $e');
+      debugPrint('Stack trace: $stackTrace');
+
+      // محاولة إرسال تقرير الخطأ
+      try {
+        final reminderId = int.tryParse(data['body']?.toString() ?? '');
+        await _sendBackgroundConfirmation(data, reminderId, 'error: $e');
+      } catch (confirmError) {
+        debugPrint('⚠️ [Background] Failed to send error confirmation: $confirmError');
+      }
+    }
+  }
+
+  Future<void> _sendBackgroundConfirmation(
+    Map<String, dynamic> data,
+    int? reminderId,
+    String status,
+  ) async {
+    try {
+      final uri = Uri.parse('${AppConstants.API_BASE_URL}/test-fcm-background');
+
+      await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Password': AppConstants.API_PASSWORD,
+          'X-FCM-Background-Test': 'true',
+          'X-Triggered-By': 'handleReminderUpdateInBackground',
+        },
+        body: jsonEncode({
+          'triggered_at': DateTime.now().toIso8601String(),
+          'fcm_message_id': data['message_id'] ?? data['messageId'],
+          'reminder_id': reminderId,
+          'status': status,
+          'full_data': data,
+          'source': 'RemindersService.handleReminderUpdateInBackground',
+        }),
+      ).timeout(const Duration(seconds: 10));
+
+      debugPrint('✅ Background confirmation sent to backend');
+    } catch (e) {
+      debugPrint('⚠️ Failed to send background confirmation: $e');
     }
   }
 }

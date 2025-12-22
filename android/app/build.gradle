@@ -71,15 +71,11 @@ android {
 flutter {
     source '../..'
 }
-
 dependencies {
-    def kotlin_version = "1.9.23"
-
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:1.2.2'
 
-    // ✅ Firebase
+    // Firebase
     implementation platform("com.google.firebase:firebase-bom:33.16.0")
     implementation "com.google.firebase:firebase-analytics"
-    implementation "com.google.firebase:firebase-messaging-ktx"  // ⭐ هذا السطر الجديد
+    implementation "com.google.firebase:firebase-messaging-ktx"
 }

@@ -167,7 +167,7 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _startAppInitialization() async {
     try {
       _showFirebaseStatus();
-      await Future.delayed(const Duration(milliseconds: 1200));
+      //await Future.delayed(const Duration(milliseconds: 1200));
 
       final hasInternet =
           await ConnectivityHelper.checkInternetConnection(verbose: true);
@@ -228,7 +228,7 @@ class _SplashScreenState extends State<SplashScreen>
         _updateStatus(authProvider.isOfflineMode
             ? 'تم التحقق من البيانات المحفوظة'
             : 'تم التحقق من حالة المستخدم بنجاح');
-        await Future.delayed(const Duration(milliseconds: 800));
+        //await Future.delayed(const Duration(milliseconds: 800));
         await _handleAuthenticatedUser(authProvider,
             isOffline: authProvider.isOfflineMode);
       } else {
@@ -239,9 +239,9 @@ class _SplashScreenState extends State<SplashScreen>
               color: Colors.red);
         }
         _updateStatus('لم يتم العثور على بيانات تسجيل دخول صحيحة...');
-        await Future.delayed(const Duration(milliseconds: 1500));
+        //await Future.delayed(const Duration(milliseconds: 1500));
         _updateStatus('إعادة توجيه لتسجيل الدخول...');
-        await Future.delayed(const Duration(milliseconds: 800));
+        //await Future.delayed(const Duration(milliseconds: 800));
         _navigateToRoute('/auth');
       }
     } catch (e) {
@@ -262,36 +262,36 @@ class _SplashScreenState extends State<SplashScreen>
         _safeShowMessage('❌ No stored token found - cannot work offline',
             color: Colors.red);
         _updateStatus('لا توجد بيانات تسجيل دخول محفوظة');
-        await Future.delayed(const Duration(milliseconds: 1000));
+        //await Future.delayed(const Duration(milliseconds: 1000));
         _updateStatus('يجب تسجيل الدخول أولاً - بحاجة لإنترنت');
-        await Future.delayed(const Duration(milliseconds: 1000));
+        //await Future.delayed(const Duration(milliseconds: 1000));
         _navigateToRoute('/auth');
         return;
       }
 
       _updateStatus('تهيئة الوضع بدون إنترنت...');
       await authProvider.initializeAuthentication();
-      await Future.delayed(const Duration(milliseconds: 800));
+      //await Future.delayed(const Duration(milliseconds: 800));
 
       if (authProvider.isAuthenticated) {
         _safeShowMessage('✅ User authenticated in offline mode');
         _updateStatus('تم العثور على بيانات تسجيل الدخول المحفوظة');
-        await Future.delayed(const Duration(milliseconds: 800));
+        //await Future.delayed(const Duration(milliseconds: 800));
         await _handleAuthenticatedUser(authProvider, isOffline: true);
       } else {
         _safeShowMessage('❌ Authentication failed in offline mode',
             color: Colors.red);
         _updateStatus('فشل في استرجاع البيانات المحفوظة');
-        await Future.delayed(const Duration(milliseconds: 1000));
+        //await Future.delayed(const Duration(milliseconds: 1000));
         _updateStatus('يجب تسجيل الدخول أولاً - بحاجة لإنترنت');
-        await Future.delayed(const Duration(milliseconds: 800));
+        //await Future.delayed(const Duration(milliseconds: 800));
         _navigateToRoute('/auth');
       }
     } catch (e) {
       _safeShowMessage('❌ Error in offline authentication: $e',
           color: Colors.red);
       _updateStatus('خطأ في الوضع بدون إنترنت');
-      await Future.delayed(const Duration(milliseconds: 800));
+      //await Future.delayed(const Duration(milliseconds: 800));
       _navigateToRoute('/auth');
     }
   }
@@ -310,7 +310,7 @@ Future<void> _handleAuthenticatedUser(AuthProvider authProvider, {required bool 
         _safeShowMessage('⚠️ RemindersNotifier offline init failed: $e', color: Colors.orange);
         _updateStatus('جاري تحضير التذكيرات...');
       }
-      await Future.delayed(const Duration(milliseconds: 500));
+      //await Future.delayed(const Duration(milliseconds: 500));
       _updateStatus('الانتقال إلى التذكيرات...');
       
       // إرسال FCM token قبل الانتقال إلى صفحة reminders
@@ -321,7 +321,7 @@ Future<void> _handleAuthenticatedUser(AuthProvider authProvider, {required bool 
         _safeShowMessage('⚠️ فشل إرسال FCM token: $e', color: Colors.orange);
       }
       
-      await Future.delayed(const Duration(milliseconds: 300));
+      //await Future.delayed(const Duration(milliseconds: 300));
       _navigateToRoute('/reminders');
     } else {
       _safeShowMessage('🌐 Authenticated user online - checking subscription');
@@ -338,7 +338,7 @@ Future<void> _handleAuthenticatedUser(AuthProvider authProvider, {required bool 
 
         if (subscriptionResponse['subscribed'] == true) {
           _updateStatus('اشتراك مميز مفعل!');
-          await Future.delayed(const Duration(milliseconds: 500));
+          //await Future.delayed(const Duration(milliseconds: 500));
           
           // إرسال FCM token قبل الانتقال إلى صفحة reminders
           try {
@@ -355,11 +355,11 @@ Future<void> _handleAuthenticatedUser(AuthProvider authProvider, {required bool 
 
           await _performLogoutViaAuthService();
 
-          await Future.delayed(const Duration(milliseconds: 1000));
+          //await Future.delayed(const Duration(milliseconds: 1000));
           _updateStatus('يجب الاشتراك أولاً للوصول للتطبيق...');
-          await Future.delayed(const Duration(milliseconds: 1000));
+          //await Future.delayed(const Duration(milliseconds: 1000));
           _updateStatus('إعادة توجيه لتسجيل الدخول...');
-          await Future.delayed(const Duration(milliseconds: 500));
+          //await Future.delayed(const Duration(milliseconds: 500));
           _navigateToRoute('/auth');
         }
       } catch (subscriptionError) {
@@ -376,16 +376,16 @@ Future<void> _handleAuthenticatedUser(AuthProvider authProvider, {required bool 
             _safeShowMessage('⚠️ فشل إرسال FCM token: $e', color: Colors.orange);
           }
           
-          await Future.delayed(const Duration(milliseconds: 500));
+          //await Future.delayed(const Duration(milliseconds: 500));
           _navigateToRoute('/reminders');
         } else {
           _safeShowMessage('❌ Subscription check failed online - logging out user', color: Colors.red);
           _updateStatus('فشل فحص الاشتراك - إلغاء تسجيل الدخول...');
 
           await _performLogoutViaAuthService();
-          await Future.delayed(const Duration(milliseconds: 1000));
+          //await Future.delayed(const Duration(milliseconds: 1000));
           _updateStatus('إعادة توجيه لتسجيل الدخول...');
-          await Future.delayed(const Duration(milliseconds: 500));
+          //await Future.delayed(const Duration(milliseconds: 500));
           _navigateToRoute('/auth');
         }
       }
@@ -396,7 +396,7 @@ Future<void> _handleAuthenticatedUser(AuthProvider authProvider, {required bool 
     _updateStatus('حدث خطأ - إلغاء تسجيل الدخول للأمان...');
     try {
       await _performLogoutViaAuthService();
-      await Future.delayed(const Duration(milliseconds: 500));
+      //await Future.delayed(const Duration(milliseconds: 500));
       _navigateToRoute('/auth');
     } catch (logoutError) {
       _safeShowMessage('❌ Emergency logout failed: $logoutError', color: Colors.red);
@@ -434,14 +434,14 @@ Future<void> _handleAuthenticatedUser(AuthProvider authProvider, {required bool 
           _safeShowMessage(
               '✅ Emergency fallback: User authenticated via AuthProvider');
           _updateStatus('استخدام البيانات المحفوظة...');
-          await Future.delayed(const Duration(milliseconds: 500));
+          //await Future.delayed(const Duration(milliseconds: 500));
           _navigateToRoute('/reminders');
         } else {
           _safeShowMessage(
               '❌ Emergency fallback: No authentication via AuthProvider',
               color: Colors.red);
           _updateStatus('إعادة توجيه لتسجيل الدخول...');
-          await Future.delayed(const Duration(milliseconds: 500));
+          //await Future.delayed(const Duration(milliseconds: 500));
 
           try {
             await _performLogoutViaAuthService();
@@ -458,7 +458,7 @@ Future<void> _handleAuthenticatedUser(AuthProvider authProvider, {required bool 
         _updateStatus('حدث خطأ - إلغاء تسجيل الدخول للأمان...');
         try {
           await _performLogoutViaAuthService();
-          await Future.delayed(const Duration(milliseconds: 500));
+          //await Future.delayed(const Duration(milliseconds: 500));
           _navigateToRoute('/auth');
         } catch (logoutError) {
           _safeShowMessage('❌ Emergency logout failed: $logoutError',

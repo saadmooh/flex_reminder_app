@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
-import 'package:flex_reminder/providers/reminders_notifier.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:flex_reminder/services/api_service.dart';
 import 'package:flex_reminder/models/reminder.dart';
@@ -13,220 +12,100 @@ import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/services.dart';
+import 'package:flex_reminder/utils/consts.dart';
+import 'package:http/http.dart' as http;
+// ============================================================================
+// Type Definitions للـ Callbacks
+// ============================================================================
 
-// دالة للتعامل مع مهام WorkManager في الخلفية
-@pragma('vm:entry-point')
-void callbackDispatcher() {
-  Workmanager().executeTask((task, inputData) async {
-    switch (task) {
-      case 'followUpNotification':
-        await _handleFollowUpNotification(inputData);
-        break;
-      case 'markReminderAsRead':
-        await _handleMarkReminderAsRead(inputData);
-        break;
-      default:
-        return false;
-    }
-    return true;
-  });
-}
+/// Callback يتم استدعاؤه عندما يتم marking reminder as read
+typedef OnReminderMarkedAsReadCallback = Future<void> Function(int reminderId);
 
-// دالة للتعامل مع الإشعار التابع وإعادة جدولة المنشور
-@pragma('vm:entry-point')
-Future<void> _handleFollowUpNotification(
-    Map<String, dynamic>? inputData) async {
-  try {
-    if (inputData == null) {
-      return;
-    }
-    final String title = inputData['title'] ?? 'تذكير متابعة';
-    final String body = inputData['body'] ?? 'هذا تذكير متابعة!';
-    final String reminderId = inputData['reminderId']?.toString() ?? '';
-    final String url = inputData['url'] ?? '';
-    final String importance = inputData['importance'] ?? '';
+/// Callback يتم استدعاؤه عندما يتم فتح reminder
+typedef OnReminderOpenedCallback = Future<void> Function(int reminderId, String url, bool wasOpened);
 
-    // إرسال طلب reschedulePost إلى السيرفر
-    try {
-      final apiService = ApiService();
-      final Map<String, dynamic> rescheduleResult =
-          await apiService.reschedulePost(url, importance);
+/// Callback للتأكيد على جدولة الإشعار
+typedef ConfirmationCallback = Future<void> Function(
+  Map<String, dynamic> data,
+  int? reminderId,
+  String status,
+);
 
-      // التحقق من وجود وقت جديد في الاستجابة
-      if (rescheduleResult.containsKey('post') &&
-          rescheduleResult['post'].containsKey('next_reminder_time')) {
-        final String newReminderTime =
-            rescheduleResult['post']['next_reminder_time'];
+// ============================================================================
+// ✅ تم حذف كل دوال WorkManager Background Tasks من هنا
+// تم نقلها إلى: lib/background/workmanager_dispatcher.dart
+// ============================================================================
 
-        // إرسال إشعار متابعة مع المعلومات المحدثة
-        await AwesomeNotifications().createNotification(
-          content: NotificationContent(
-            id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-            channelKey: 'scheduled_channel',
-            title: '🔄 $title - تم إعادة الجدولة',
-            body: 'تم إعادة جدولة التذكير بنجاح للوقت التالي: $newReminderTime',
-            category: NotificationCategory.Reminder,
-            notificationLayout: NotificationLayout.Default,
-            payload: {
-              'id': reminderId,
-              'url': url,
-              'importance': importance,
-              'isFollowUp': 'true',
-              'rescheduled': 'true',
-              'newReminderTime': newReminderTime,
-            },
-            criticalAlert: true,
-            locked: true,
-          ),
-        );
-      } else {
-        // إرسال إشعار متابعة عادي
-        await AwesomeNotifications().createNotification(
-          content: NotificationContent(
-            id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-            channelKey: 'scheduled_channel',
-            title: '🔔 $title - متابعة',
-            body: body,
-            category: NotificationCategory.Reminder,
-            notificationLayout: NotificationLayout.Default,
-            payload: {
-              'id': reminderId,
-              'url': url,
-              'importance': importance,
-              'isFollowUp': 'true',
-            },
-            criticalAlert: true,
-            locked: true,
-          ),
-        );
-      }
-    } catch (apiError) {
-      // جدولة إعادة محاولة بعد 30 دقيقة
-      final DateTime retryTime =
-          DateTime.now().add(const Duration(minutes: 30));
-      await Workmanager().registerOneOffTask(
-        'retry_followUpNotification_$reminderId',
-        'followUpNotification',
-        initialDelay: const Duration(minutes: 30),
-        inputData: {
-          'reminderId': reminderId,
-          'title': title,
-          'body': 'إعادة محاولة جدولة التذكير تلقائياً',
-          'url': url,
-          'importance': importance,
-          'scheduledTime': inputData['scheduledTime'],
-        },
-        constraints: Constraints(
-          networkType: NetworkType.connected,
-        ),
-      );
-
-      // حفظ معلومات مهمة إعادة المحاولة
-      final prefs = await SharedPreferences.getInstance();
-      final Map<String, String> followUpTasks = await _getFollowUpTasks();
-      followUpTasks[reminderId.toString()] =
-          'retry_followUpNotification_$reminderId';
-      await prefs.setString('follow_up_tasks', jsonEncode(followUpTasks));
-
-      // إرسال إشعار خطأ مع معلومات إعادة المحاولة
-      await AwesomeNotifications().createNotification(
-        content: NotificationContent(
-          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-          channelKey: 'scheduled_channel',
-          title: '⚠️ $title - خطأ في الجدولة',
-          body:
-              'لم يتم إعادة الجدولة بسبب خطأ في الاتصال. سيتم المحاولة مجدداً بعد 30 دقيقة.',
-          category: NotificationCategory.Reminder,
-          notificationLayout: NotificationLayout.Default,
-          payload: {
-            'id': reminderId,
-            'url': url,
-            'importance': importance,
-            'isFollowUp': 'true',
-            'error': 'api_failed',
-            'retryScheduled': 'true',
-            'retryTime': retryTime.toIso8601String(),
-          },
-          criticalAlert: true,
-          locked: true,
-        ),
-      );
-    }
-  } catch (e) {
-    // لا نفعل شيئاً هنا (تم حذف الـ SnackBar)
-  }
-}
-
-// دالة جديدة للتعامل مع markReminderAsRead في الخلفية
-@pragma('vm:entry-point')
-Future<void> _handleMarkReminderAsRead(Map<String, dynamic>? inputData) async {
-  try {
-    if (inputData == null) {
-      return;
-    }
-    final String url = inputData['url'] ?? '';
-    final int reminderId = inputData['reminderId'] ?? 0;
-    final bool wasOpened = inputData['wasOpened'] ?? true;
-
-    // إرسال طلب updateStats إلى السيرفر
-    try {
-      final apiService = ApiService();
-      await apiService.updateStats(url, wasOpened);
-    } catch (apiError) {
-      // جدولة إعادة محاولة
-      await _scheduleMarkReminderAsReadRetry(reminderId, url, wasOpened);
-    }
-  } catch (e) {
-    // تم حذف الـ SnackBar
-  }
-}
-
-// جدولة إعادة محاولة لـ markReminderAsRead
-@pragma('vm:entry-point')
-Future<void> _scheduleMarkReminderAsReadRetry(
-    int reminderId, String url, bool wasOpened) async {
-  try {
-    final String retryTaskName = 'retry_markReminderAsRead_$reminderId';
-    await Workmanager().registerOneOffTask(
-      retryTaskName,
-      'markReminderAsRead',
-      initialDelay: const Duration(seconds: 30),
-      inputData: {
-        'reminderId': reminderId,
-        'url': url,
-        'wasOpened': wasOpened,
-        'isRetry': true,
-      },
-      constraints: Constraints(
-        networkType: NetworkType.connected,
-      ),
-    );
-  } catch (e) {
-    // تم حذف الـ SnackBar
-  }
-}
-
-// الحصول على معلومات مهام المتابعة
-Future<Map<String, String>> _getFollowUpTasks() async {
-  final prefs = await SharedPreferences.getInstance();
-  final String? tasksString = prefs.getString('follow_up_tasks');
-  if (tasksString == null) return {};
-  final Map<String, dynamic> decoded = jsonDecode(tasksString);
-  return decoded.cast<String, String>();
-}
+// ============================================================================
+// NotificationService - Singleton
+// ============================================================================
 
 class NotificationService {
+  // ============================================================================
+  // Singleton Pattern
+  // ============================================================================
+  
   static final NotificationService _instance = NotificationService._internal();
   static NotificationService get instance => _instance;
   factory NotificationService() => _instance;
   NotificationService._internal();
 
-  static const platform =
-      MethodChannel('com.saadmohammed2000.flex_reminder/alarm');
+  // ============================================================================
+  // Platform Channel
+  // ============================================================================
+  
+  static const platform = MethodChannel('com.saadmohammed2000.flex_reminder/alarm');
 
-  // تم حذف دالة _showSnackBar وجميع دوال showSnackBar (success/error/warning)
+  // ============================================================================
+  // ✅ Callbacks - لفصل الاعتماديات
+  // ============================================================================
+  
+  /// Callback يتم استدعاؤه عندما يتم marking reminder as read محلياً
+  OnReminderMarkedAsReadCallback? onReminderMarkedAsRead;
+  
+  /// Callback يتم استدعاؤه عندما يتم فتح reminder
+  OnReminderOpenedCallback? onReminderOpened;
+// ============================================================================
+// ✅ دالة تأكيد خاصة بجدولة الإشعارات
+// ============================================================================
 
-  // فحص الاتصال بالإنترنت
+Future<void> _sendSchedulingConfirmation(
+  String stage,
+  Map<String, dynamic> data,
+  bool? success,
+  String? error,
+) async {
+  try {
+    final uri = Uri.parse('${AppConstants.API_BASE_URL}/test-fcm-background');
+    
+    final requestBody = {
+      'triggered_at': DateTime.now().toIso8601String(),
+      'source': 'NotificationService.scheduleReminder',
+      'stage': stage,
+      'data': data,
+      'success': success,
+      'error': error,
+    };
+    
+    await http.post(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Password': AppConstants.API_PASSWORD,
+        'X-FCM-Background-Test': 'true',
+      },
+      body: jsonEncode(requestBody),
+    ).timeout(const Duration(seconds: 5));
+    
+    debugPrint('📤 Scheduling confirmation: $stage = ${success ?? "null"}');
+  } catch (e) {
+    debugPrint('⚠️ Failed to send scheduling confirmation: $e');
+  }
+}
+  // ============================================================================
+  // Initialization
+  // ============================================================================
+
   Future<bool> _checkInternetConnection() async {
     try {
       final connectivityResult = await Connectivity().checkConnectivity();
@@ -238,10 +117,9 @@ class NotificationService {
 
   Future<void> init() async {
     tz.initializeTimeZones();
-    await Workmanager().initialize(
-      callbackDispatcher,
-      isInDebugMode: false,
-    );
+    
+    // ✅ تم إزالة تسجيل WorkManager من هنا
+    // تم نقله إلى main.dart مع callbackDispatcher المنفصل
 
     await AwesomeNotifications().initialize(
       'resource://drawable/notification',
@@ -277,22 +155,26 @@ class NotificationService {
     );
   }
 
+  // ============================================================================
+  // Notification Event Handlers
+  // ============================================================================
+
   @pragma("vm:entry-point")
   static Future<void> onNotificationCreated(
       ReceivedNotification receivedNotification) async {
-    // تم حذف الـ SnackBar
+    debugPrint('Notification created: ${receivedNotification.id}');
   }
 
   @pragma("vm:entry-point")
   static Future<void> onNotificationDisplayed(
       ReceivedNotification receivedNotification) async {
-    // تم حذف الـ SnackBars
+    debugPrint('Notification displayed: ${receivedNotification.id}');
   }
 
   @pragma("vm:entry-point")
   static Future<void> onDismissActionReceived(
       ReceivedAction receivedAction) async {
-    // تم حذف الـ SnackBar
+    debugPrint('Notification dismissed: ${receivedAction.id}');
   }
 
   @pragma("vm:entry-point")
@@ -304,40 +186,48 @@ class NotificationService {
       final String? url = payload['url'];
       final int? reminderId = int.tryParse(reminderIdStr);
 
+      // ============================================================================
+      // ✅ استخدام الـ Callback بدلاً من الاعتماد المباشر
+      // ============================================================================
+      
       if (reminderId != null) {
-        final remindersNotifier = RemindersNotifier.instance;
-        await remindersNotifier.markReminderAsReadLocally(reminderId);
-        await NotificationService.instance
-            .cancelReminderNotifications(reminderId);
+        // استدعاء الـ callback لـ marking as read (سيتم ربطه من RemindersService)
+        await _instance.onReminderMarkedAsRead?.call(reminderId);
+        
+        // إلغاء الإشعارات
+        await NotificationService.instance.cancelReminderNotifications(reminderId);
       }
 
+      // فتح الـ URL
       if (url != null && url.isNotEmpty) {
         final Uri? uri = Uri.tryParse(url);
         if (uri != null && await canLaunchUrl(uri)) {
           try {
             await launchUrl(uri, mode: LaunchMode.externalApplication);
+            
+            // استدعاء callback الفتح الناجح
             if (reminderId != null) {
-              await _instance._scheduleMarkReminderAsReadTask(
-                  reminderId, url, true);
+              await _instance.onReminderOpened?.call(reminderId, url, true);
+              await _instance._scheduleMarkReminderAsReadTask(reminderId, url, true);
             }
           } catch (e) {
+            // استدعاء callback الفتح الفاشل
             if (reminderId != null) {
-              await _instance._scheduleMarkReminderAsReadTask(
-                  reminderId, url, false);
+              await _instance.onReminderOpened?.call(reminderId, url, false);
+              await _instance._scheduleMarkReminderAsReadTask(reminderId, url, false);
             }
           }
         } else {
           if (reminderId != null) {
-            await _instance._scheduleMarkReminderAsReadTask(
-                reminderId, url, false);
+            await _instance.onReminderOpened?.call(reminderId, url, false);
+            await _instance._scheduleMarkReminderAsReadTask(reminderId, url, false);
           }
         }
       }
 
+      // التنقل للـ reminder screen
       if (reminderId != null) {
-        final Map<String, dynamic> arguments = {
-          'reminderId': reminderId,
-        };
+        final Map<String, dynamic> arguments = {'reminderId': reminderId};
         navigatorKey.currentState?.pushNamed('/reminder', arguments: arguments);
       } else {
         final Reminder reminder = Reminder(
@@ -363,9 +253,13 @@ class NotificationService {
         navigatorKey.currentState?.pushNamed('/reminder', arguments: reminder);
       }
     } catch (e) {
-      // تم حذف الـ print
+      debugPrint('Error in onNotificationActionReceived: $e');
     }
   }
+
+  // ============================================================================
+  // Mark As Read Task
+  // ============================================================================
 
   Future<void> _scheduleMarkReminderAsReadTask(
       int reminderId, String url, bool wasOpened) async {
@@ -393,7 +287,7 @@ class NotificationService {
           await ApiService().updateStats(url, wasOpened);
         }
       } catch (fallbackError) {
-        // لا نفعل شيئاً
+        debugPrint('Fallback updateStats failed: $fallbackError');
       }
     }
   }
@@ -402,19 +296,24 @@ class NotificationService {
     try {
       await Workmanager().cancelAll();
     } catch (e) {
-      // تم حذف الـ SnackBar
+      debugPrint('Error cancelling tasks: $e');
     }
   }
 
-  Future<void> scheduleReminderWithHiddenCheck({
+  // ============================================================================
+  // Scheduling Notifications
+  // ============================================================================
+
+  Future<bool> scheduleReminderWithHiddenCheck({
     required int reminderId,
     required String title,
     required String url,
     required DateTime scheduledDate,
     required String importance,
     Map<String, String>? additionalPayload,
+    ConfirmationCallback? onConfirmation,
   }) async {
-    await scheduleReminderNotification(
+    final bool success = await scheduleReminderNotification(
       reminderId: reminderId,
       title: title,
       url: url,
@@ -422,36 +321,71 @@ class NotificationService {
       importance: importance,
       additionalPayload: additionalPayload,
     );
+    
+    if (success && onConfirmation != null) {
+      try {
+        final Map<String, dynamic> data = {
+          'reminderId': reminderId,
+          'title': title,
+          'url': url,
+          'scheduledDate': scheduledDate.toIso8601String(),
+          'importance': importance,
+          ...?additionalPayload,
+        };
+        
+        await onConfirmation(data, reminderId, 'scheduled_successfully');
+      } catch (e) {
+        debugPrint('Error sending confirmation: $e');
+      }
+    }
+    
+    return success;
   }
 
-  Future<void> scheduleReminderNotification({
-    required int reminderId,
-    required String title,
-    required String url,
-    required DateTime scheduledDate,
-    required String importance,
-    Map<String, String>? additionalPayload,
-  }) async {
-    if (scheduledDate.isBefore(DateTime.now())) {
-      return;
-    }
+// ✅ في notification_service.dart:
+Future<bool> scheduleReminderNotification({
+  required int reminderId,
+  required String title,
+  required String url,
+  required DateTime scheduledDate,
+  required String importance,
+  Map<String, String>? additionalPayload,
+}) async {
+  if (scheduledDate.isBefore(DateTime.now())) {
+    return false;
+  }
 
+  try {
+    // إلغاء الإشعارات القديمة
     await cancelReminderNotifications(reminderId);
 
-    try {
-      final result = await platform.invokeMethod('scheduleAlarm', {
-        'reminderId': reminderId,
-        'title': title,
-        'body': 'حان وقت التذكير!',
-        'url': url,
-        'importance': importance,
-        'scheduledTime': scheduledDate.millisecondsSinceEpoch,
-      });
-      // لا نتحقق من النتيجة هنا (تم حذف الـ SnackBars)
-    } catch (e) {
-      // تم حذف الـ SnackBar
-    }
+    // إنشاء إشعار جديد باستخدام Awesome Notifications
+    await AwesomeNotifications().createNotification(
+      content: NotificationContent(
+        id: reminderId.hashCode,
+        channelKey: 'scheduled_channel',
+        title: title,
+        body: 'Time to review!',
+        payload: {
+          'id': reminderId.toString(),
+          'url': url,
+          'importance': importance,
+          ...?additionalPayload,
+        },
+      ),
+      schedule: NotificationCalendar.fromDate(
+        date: scheduledDate,
+        allowWhileIdle: true,
+        preciseAlarm: true,
+      ),
+    );
+
+    return true;
+  } catch (e) {
+    debugPrint('❌ Error: $e');
+    return false;
   }
+}
 
   Future<bool> _scheduleNotification({
     required String title,
@@ -464,6 +398,7 @@ class NotificationService {
     try {
       final int notificationId = createUniqueId();
       final now = DateTime.now();
+      
       if (scheduledDate.isBefore(now) ||
           scheduledDate.difference(now).inSeconds < 10) {
         return false;
@@ -471,8 +406,7 @@ class NotificationService {
 
       final prefs = await SharedPreferences.getInstance();
       final wakeUpScreen = prefs.getBool('notification_wake_screen') ?? true;
-      final preciseAlarms =
-          prefs.getBool('notification_precise_alarms') ?? true;
+      final preciseAlarms = prefs.getBool('notification_precise_alarms') ?? true;
 
       await AwesomeNotifications().createNotification(
         content: NotificationContent(
@@ -506,6 +440,7 @@ class NotificationService {
       }
       return true;
     } catch (e) {
+      debugPrint('Error in _scheduleNotification: $e');
       return false;
     }
   }
@@ -531,6 +466,7 @@ class NotificationService {
         payload: payload,
       );
     } catch (e) {
+      debugPrint('Error in scheduleNotification: $e');
       return false;
     }
   }
@@ -539,32 +475,53 @@ class NotificationService {
     return DateTime.now().millisecondsSinceEpoch.remainder(100000);
   }
 
+  // ============================================================================
+  // Cancellation
+  // ============================================================================
+
   Future<void> cancelReminderNotifications(int reminderId) async {
     try {
       await platform.invokeMethod('cancelAlarm', {'reminderId': reminderId});
     } catch (e) {
-      // تم حذف الـ SnackBar
+      debugPrint('Error cancelling reminder notifications: $e');
     }
   }
 
-  Future<void> updateReminderNotifications(
-      Map<String, dynamic> reminderData) async {
-    final reminderId = reminderData['id'] as int?;
-    if (reminderId == null) {
-      return;
+  Future<void> cancelAllNotifications() async {
+    try {
+      await platform.invokeMethod('cancelAllAlarms');
+    } catch (e) {
+      debugPrint('Error cancelling all alarms: $e');
     }
+    
+    await AwesomeNotifications().cancelAll();
+    await Workmanager().cancelAll();
+    
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('notification_map');
+    await prefs.remove('follow_up_tasks');
+  }
+
+  // ============================================================================
+  // Update Notifications
+  // ============================================================================
+
+  Future<void> updateReminderNotifications(Map<String, dynamic> reminderData) async {
+    final reminderId = reminderData['id'] as int?;
+    if (reminderId == null) return;
 
     final nextReminderTimeStr = reminderData['next_reminder_time'] as String?;
     if (nextReminderTimeStr != null && nextReminderTimeStr.isNotEmpty) {
       final scheduledDate = DateTime.parse(nextReminderTimeStr);
+      
       if (scheduledDate.isBefore(DateTime.now())) {
         try {
           final Map<String, dynamic> resMap = await ApiService().reschedulePost(
               reminderData['url'] as String? ?? '',
               reminderData['importance'] as String? ?? 'day');
-          final String newScheduledTimeStr =
-              resMap['post']['next_reminder_time'];
+          final String newScheduledTimeStr = resMap['post']['next_reminder_time'];
           final DateTime newScheduledDate = DateTime.parse(newScheduledTimeStr);
+          
           if (newScheduledDate.isAfter(DateTime.now())) {
             await scheduleReminderNotification(
               reminderId: reminderId,
@@ -585,7 +542,7 @@ class NotificationService {
             return;
           }
         } catch (e) {
-          // تم حذف الـ SnackBar
+          debugPrint('Error rescheduling: $e');
         }
         return;
       }
@@ -608,14 +565,29 @@ class NotificationService {
       );
     }
   }
+ // ============================================================================
+  // ✅ إعادة هذه الدالة لأنها تُستخدم في getServiceStatus()
+  // ============================================================================
+  
+  Future<Map<String, String>> _getFollowUpTasks() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? tasksString = prefs.getString('follow_up_tasks');
+    if (tasksString == null) return {};
+    final Map<String, dynamic> decoded = jsonDecode(tasksString);
+    return decoded.cast<String, String>();
+  }
+
+  // ============================================================================
+  // Utilities
+  // ============================================================================
 
   Future<List<DateTime>> getScheduledTimesForReminder(int reminderId) async {
     final notificationMap = await _getNotificationMap();
     final notificationIds = notificationMap[reminderId] ?? [];
     List<DateTime> scheduledTimes = [];
+    
     for (final id in notificationIds) {
-      final notifications =
-          await AwesomeNotifications().listScheduledNotifications();
+      final notifications = await AwesomeNotifications().listScheduledNotifications();
       for (final notification in notifications) {
         if (notification.content?.id == id) {
           final schedule = notification.schedule;
@@ -635,19 +607,6 @@ class NotificationService {
       }
     }
     return scheduledTimes;
-  }
-
-  Future<void> cancelAllNotifications() async {
-    try {
-      await platform.invokeMethod('cancelAllAlarms');
-    } catch (e) {
-      // تم حذف الـ SnackBar
-    }
-    await AwesomeNotifications().cancelAll();
-    await Workmanager().cancelAll();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('notification_map');
-    await prefs.remove('follow_up_tasks');
   }
 
   Future<bool> checkPermissions() async {
@@ -686,15 +645,10 @@ class NotificationService {
     };
   }
 
-  void printStatus() {
-    // تم حذف جميع الـ SnackBars داخل هذه الدالة
-  }
-
   Future<void> updateNotificationChannel() async {
     final prefs = await SharedPreferences.getInstance();
     final soundEnabled = prefs.getBool('notification_sound_enabled') ?? true;
-    final vibrationEnabled =
-        prefs.getBool('notification_vibration_enabled') ?? true;
+    final vibrationEnabled = prefs.getBool('notification_vibration_enabled') ?? true;
 
     await AwesomeNotifications().removeChannel('scheduled_channel');
     await AwesomeNotifications().setChannel(
@@ -716,18 +670,4 @@ class NotificationService {
   void dispose() {
     Workmanager().cancelAll();
   }
-
-  bool _isValidScheduledTime(DateTime scheduledDate, int reminderId) {
-    final now = DateTime.now();
-    final difference = scheduledDate.difference(now);
-    if (difference.isNegative) {
-      return false;
-    }
-    if (difference.inSeconds < 30) {
-      return false;
-    }
-    return true;
-  }
-
-  
 }

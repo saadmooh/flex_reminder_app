@@ -1,10 +1,10 @@
 import 'package:flex_reminder/globals.dart'; // استيراد واحد فقط
 import 'package:flutter/material.dart';
 import 'dart:convert';
-import 'package:http/http.dart' as http;  // 🔥 ده اللي كان ناقص للـ http
-import '../../utils/consts.dart';        // 🔥 ده فيه AppConstants (API_BASE_URL و API_PASSWORD)
+import 'package:http/http.dart' as http;
+import '../../utils/consts.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // تم التأكد من وجود هذا الاستيراد
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:flex_reminder/pages/auth_screen.dart';
@@ -29,9 +29,9 @@ import 'package:flex_reminder/services/notification_service.dart';
 import 'package:flex_reminder/services/reminders_service.dart';
 import 'package:flex_reminder/services/fcm_service.dart';
 import 'package:flex_reminder/utils/connectivity_helper.dart';
-import 'dart:convert';
 import 'package:flex_reminder/services/subscription_manager.dart';
-
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flex_reminder/background/workmanager_dispatcher.dart'; // ✅ استيراد dispatcher
 
 // إنشاء instance مشترك للـ NotificationService
 late NotificationService _backgroundNotificationService;
@@ -69,30 +69,27 @@ void _safeShowMessage(String message, {Color? color, bool debugOnly = false}) {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
   // ✅ 1. تهيئة Firebase أولاً
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
   
-  // ✅ 2. تهيئة الإشعارات المحلية قبل تسجيل معالج الخلفية
-  await _initializeLocalNotifications(); // 🔥 تعديل جديد: استدعاء التهيئة هنا
+  // ✅ 2. تهيئة الإشعارات المحلية
+  await _initializeLocalNotifications();
   
-  // ✅ 3. ثم تسجيل معالج الخلفية
+  // ✅ 3. تسجيل معالج الخلفية (الخفيف الآن)
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  
+  // ✅ 4. تهيئة WorkManager (مرة واحدة فقط)
+  await Workmanager().initialize(
+    callbackDispatcher,  // ✅ من workmanager_dispatcher.dart
+    isInDebugMode: kDebugMode,
+  );
   
   // ✅ تفعيل وضع Debug في بداية التطبيق
   isDebugMode = true; // من globals.dart
-  
-  // فحص الاتصال بالإنترنت
-  print('📡 فحص الاتصال بالإنترنت...');
-  final hasInternet = await ConnectivityHelper.checkInternetConnection(verbose: true);
-  if (!hasInternet) {
-    print('❌ لا يوجد اتصال بالإنترنت - تشغيل شاشة عدم الاتصال');
-    runApp(const NoInternetApp());
-    return;
-  }
-  print('✅ الاتصال بالإنترنت متوفر');
-
+ 
   // استخدام دالة التهيئة الموحدة
   await _initializeAndStartApp();
 }
@@ -102,17 +99,6 @@ Future<void> _initializeAndStartApp() async {
     // تهيئة Firebase
     final firebaseInitialized = await _initializeFirebaseSafely();
     
-    // تهيئة WorkManager
-    try {
-      await Workmanager().initialize(
-        callbackDispatcher,
-        isInDebugMode: true,
-      );
-    } catch (e) {
-      await showErrorSnackBar('خطأ في تهيئة WorkManager');
-      debugPrint('WorkManager error: $e');
-    }
-
     // تهيئة NotificationService (للإشعارات المجدولة)
     try {
       final notificationService = NotificationService();
@@ -202,108 +188,38 @@ Future<bool> _initializeFirebaseSafely() async {
   }
 }
 
-// تهيئة FCM بشكل آمن
-Future<bool> _initializeFcmSafely() async {
-  try {
-    if (!isFirebaseInitialized) {
-      await showWarningSnackBar('Firebase غير مهيأ، تخطي FCM');
-      return false;
-    }
-
-    await showInfoSnackBar('جاري تهيئة FCM...');
-
-    final fcmService = FcmService.instance;
-    
-    final fcmResult = await fcmService.init().timeout(
-      const Duration(seconds: 15),
-      onTimeout: () => {
-        'fcmToken': null,
-        'message': 'FCM initialization timeout',
-        'permissionsGranted': false,
-      },
-    );
-
-    isFcmInitialized = fcmResult['permissionsGranted'] ?? false;
-    
-    final fcmToken = fcmResult['fcmToken'];
-    if (fcmToken != null && fcmToken.toString().length > 20) {
-      debugPrint('✅ FCM Token: ${fcmToken.toString().substring(0, 20)}...');
-    }
-    
-    if (isFcmInitialized) {
-      await showSuccessSnackBar('تم تهيئة FCM بنجاح');
-    } else {
-      await showWarningSnackBar('فشل تهيئة FCM');
-    }
-    
-    return isFcmInitialized;
-    
-  } catch (e, stackTrace) {
-    await showErrorSnackBar('خطأ في تهيئة FCM');
-    debugPrint('FCM init error: $e\n$stackTrace');
-    isFcmInitialized = false;
-    return false;
-  }
-}
-
 // ============================================================================
-// دوال الخدمات في الخلفية
+// دوال الخدمات في الخلفية (معدلة)
 // ============================================================================
 
+// ✅ تعديل مهم: معالج الخلفية الخفيف جدًا
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // تهيئة Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
+  // 1. Firebase فقط
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
+
+  if (message.data.isEmpty) return;
+
+  // 2. حفظ البيانات (خفيف)
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString(
+    'pending_fcm_payload',
+    jsonEncode(message.data),
   );
 
-
-  // ====================== الجزء الجديد: إرسال طلب تجريبي للـ backend ======================
-  try {
-    final uri = Uri.parse('${AppConstants.API_BASE_URL}/test-fcm-background');
-
-    final response = await http.post(
-      uri,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Password': AppConstants.API_PASSWORD, // لو موجود عندك
-        // ممكن نضيف header إضافي عشان نميز الطلب
-        'X-FCM-Background-Test': 'true',
-      },
-      body: jsonEncode({
-        'message_id': message.messageId,
-      
-        'data': message.data,
-        'sent_time': message.sentTime?.toIso8601String(),
-        'received_at_background': DateTime.now().toIso8601String(),
-      }),
-    ).timeout(const Duration(seconds: 10)); // حماية من التعليق
-
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      debugPrint('✅ تم إرسال تأكيد وصول FCM في الخلفية بنجاح!');
-    } else {
-      debugPrint('⚠️ تأكيد FCM في الخلفية: استجابة غير ناجحة ${response.statusCode}');
-    }
-  } catch (e) {
-    debugPrint('❌ فشل إرسال تأكيد FCM في الخلفية: $e');
-  }
-  // =================================================================================
-
-  // باقي الكود الأصلي (معالجة النوع)
-  final data = Map<String, dynamic>.from(message.data);
-  final type = data['type'];
-
-  switch (type) {
-    case 'reminder_update':
-      await RemindersService.instance
-          .handleReminderUpdateInBackground(data);
-      break;
-
-    case 'subscription_update':
-      await SubscriptionManager()
-          .handleSubscriptionUpdateNotification(data);
-      break;
-  }
+  // 3. تشغيل WorkManager
+  await Workmanager().registerOneOffTask(
+    'fcm-background-task',
+    'processFcmPayload',
+    constraints: Constraints(
+      networkType: NetworkType.connected,
+    ),
+    backoffPolicy: BackoffPolicy.exponential,
+  );
 }
 
 // 🔥 تعديل جديد: دالة مساعدة لعرض الإشعار المحلي
@@ -333,34 +249,6 @@ Future<void> _showLocalNotificationFromMessage(RemoteMessage message) async {
     platformChannelSpecifics,
     payload: jsonEncode(message.data), // إرسال البيانات كـ payload
   );
-}
-
-
-Future<void> _initializeBackgroundServices() async {
-  try {
-    debugPrint('🔄 Initializing background services...');
-    
-    // 1. Initialize NotificationService
-    _backgroundNotificationService = NotificationService();
-    await _backgroundNotificationService.init();
-    
-    // 2. Initialize Local Notifications
-    await _initializeLocalNotifications();
-    
-    // 3. Initialize AuthProvider (Required for API calls)
-    debugPrint('🔑 Initializing AuthProvider for background...');
-    final authProvider = AuthProvider.instance;
-    await authProvider.initializeAuthentication();
-    
-    // 4. Initialize RemindersNotifier with AuthProvider
-    debugPrint('🔔 Initializing RemindersNotifier for background...');
-    final remindersNotifier = RemindersNotifier.instance;
-    await remindersNotifier.initialize(authProvider: authProvider);
-    
-    debugPrint('✅ Background services initialized successfully');
-  } catch (e) {
-    debugPrint('❌ Background services error: $e');
-  }
 }
 
 Future<void> _initializeLocalNotifications() async {
@@ -482,34 +370,6 @@ void _handleBackgroundNotificationClick(NotificationResponse response) {
 // ============================================================================
 // دوال إضافية
 // ============================================================================
-
-@pragma('vm:entry-point')
-void callbackDispatcher() {
-  Workmanager().executeTask((task, inputData) async {
-    try {
-      if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        );
-      }
-
-      switch (task) {
-        case 'reminderTask':
-          final reminderId = inputData?['reminderId'];
-          if (reminderId != null) {
-            debugPrint('تم تنفيذ تذكير رقم: $reminderId');
-          }
-          break;
-        default:
-          debugPrint('مهمة غير معروفة: $task');
-      }
-      return Future.value(true);
-    } catch (e) {
-      debugPrint('خطأ في تنفيذ المهمة: $e');
-      return Future.value(false);
-    }
-  });
-}
 
 // إضافة دالة للتحكم في وضع Debug من واجهة المستخدم
 void toggleDebugMode(bool enabled) {

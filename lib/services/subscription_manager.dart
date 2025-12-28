@@ -46,106 +46,7 @@ class SubscriptionManager {
    * 4. إذا لم تكن هناك بيانات أو كانت قديمة، يتم الاتصال بـ RevenueCat
    *    لجلب أحدث حالة وتحديث البيانات المحلية بها.
    */
-  Future<Map<String, dynamic>> checkSubscription({String? userId}) async {
-    try {
-      // 1. تحميل البيانات المحفوظة أولاً
-      await loadSubscriptionData();
-
-      // 2. التحقق من وجود بيانات وحداثتها
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final hasData = _subscriptionUserId.isNotEmpty;
-      final isDataStale = (now - _subscriptionTimestamp) > _dataStalenessThreshold.inMilliseconds;
-
-      if (hasData && !isDataStale) {
-        // الحالة 1: البيانات المحفوظة موجودة وحديثة -> الاعتماد عليها
-        if (kDebugMode) {
-          print('SubscriptionManager: Using fresh saved subscription data');
-          print('  Status: $_subscriptionStatus');
-          print('  User ID: $_subscriptionUserId');
-          print('  Event Type: $_subscriptionEventType');
-          print('  Last update: ${DateTime.fromMillisecondsSinceEpoch(_subscriptionTimestamp)}');
-        }
-        
-        return {
-          'subscribed': _subscriptionStatus,
-          'userId': _subscriptionUserId,
-          'eventType': _subscriptionEventType,
-          'message': _subscriptionStatus ? 'Premium active (saved data)' : 'No premium subscription (saved data)',
-          'source': 'saved_data_fresh', // مصدر واضح
-        };
-      }
-      
-      // الحالة 2: لا توجد بيانات أو البيانات قديمة -> جلب البيانات من RevenueCat
-      if (userId == null) {
-        if (kDebugMode) {
-          print('SubscriptionManager: No saved data or data is stale, but no userId provided for RevenueCat check.');
-        }
-        return {
-          'subscribed': false,
-          'userId': '',
-          'eventType': '',
-          'message': 'Unable to check subscription: User ID is missing.',
-          'source': 'error',
-        };
-      }
-
-      final source = hasData ? 'revenuecat_forced_refresh' : 'revenuecat_initial_check';
-      if (kDebugMode) {
-        print('SubscriptionManager: $source for user: $userId');
-      }
-      
-      bool initialized = await RevenueCatService.instance.initialize(userId: userId)
-          .timeout(
-            const Duration(seconds: 8),
-            onTimeout: () {
-              if (kDebugMode) {
-                print('SubscriptionManager: RevenueCat init timeout');
-              }
-              return false;
-            },
-          );
-      
-      if (initialized) {
-        bool isPremium = await RevenueCatService.instance.isPremiumUser();
-        
-        // تحديث المتغيرات المحلية والتخزين ليتم استخدامها لاحقًا
-        await updateSubscriptionVariables(
-          userId: userId,
-          eventType: 'REVENUECAT_CHECK',
-          status: isPremium ? 'active' : 'inactive',
-        );
-        
-        return {
-          'subscribed': _subscriptionStatus,
-          'userId': _subscriptionUserId,
-          'eventType': _subscriptionEventType,
-          'message': _subscriptionStatus ? 'Premium active (RevenueCat)' : 'No premium subscription (RevenueCat)',
-          'source': source, // مصدر يوضح سبب الاتصال
-        };
-      }
-      
-      // في حالة فشل تهيئة RevenueCat
-      return {
-        'subscribed': false,
-        'userId': _subscriptionUserId, // إرجاع آخر معرف مستخدم معروف إن وجد
-        'eventType': _subscriptionEventType,
-        'message': 'Failed to initialize RevenueCat to check subscription.',
-        'source': 'error',
-      };
-      
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error checking subscription: $e');
-      }
-      return {
-        'subscribed': false,
-        'userId': _subscriptionUserId,
-        'eventType': _subscriptionEventType,
-        'message': 'Error checking subscription: $e',
-        'source': 'error',
-      };
-    }
-  }
+  
 
   // ============================================================================
   // باقي الدوال لم تتغير وتبقى كما هي
@@ -268,40 +169,140 @@ class SubscriptionManager {
       }
     }
   }
-   Future<void> updateSubscriptionVariables({
-    required String userId,
-    required String eventType,
-    required String status,
-    }) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      
-      _subscriptionUserId = userId;
-      _subscriptionEventType = eventType;
-      _subscriptionStatus = status.toLowerCase() == 'active';
-      _subscriptionTimestamp = DateTime.now().millisecondsSinceEpoch;
-      
-      await prefs.setString(_subscriptionUserIdKey, _subscriptionUserId);
-      await prefs.setString(_subscriptionEventTypeKey, _subscriptionEventType);
-      await prefs.setBool(_subscriptionStatusKey, _subscriptionStatus);
-      await prefs.setInt(_subscriptionTimestampKey, _subscriptionTimestamp);
-      
-      await globals.loadSubscriptionData();
+  // In lib/services/subscription_manager.dart
+
+Future<Map<String, dynamic>> checkSubscription({String? userId}) async {
+  try {
+    // ✅ Define source variable
+    String source;
+    
+    // ✅ Load cached data first
+    await loadSubscriptionData();
+    
+    // ✅ Check if cached data is fresh (< 24 hours)
+    bool isDataFresh = false;
+    if (hasSubscriptionData() && _subscriptionTimestamp > 0) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final age = now - _subscriptionTimestamp;
+      isDataFresh = age < _dataStalenessThreshold.inMilliseconds;
       
       if (kDebugMode) {
-        print('SubscriptionManager: Variables updated successfully');
-        print('  User ID: $_subscriptionUserId');
-        print('  Event Type: $_subscriptionEventType');
-        print('  Status: ${_subscriptionStatus ? "active" : "inactive"}');
-        print('  Timestamp: $_subscriptionTimestamp');
-      }
-      
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error updating subscription variables: $e');
+        print('SubscriptionManager: Cached data age: ${Duration(milliseconds: age).inHours} hours, Fresh: $isDataFresh');
       }
     }
+    
+    // ✅ Use cached data if fresh
+    if (isDataFresh) {
+      source = 'cache';
+      return {
+        'subscribed': _subscriptionStatus,
+        'userId': _subscriptionUserId,
+        'eventType': _subscriptionEventType,
+        'message': _subscriptionStatus 
+            ? 'Premium active (cache)' 
+            : 'No premium subscription (cache)',
+        'source': source,
+      };
+    }
+    
+    // ✅ Fetch from RevenueCat if cache is stale/missing
+    source = 'revenuecat';
+    
+    bool initialized = await RevenueCatService.instance.initialize(userId: userId)
+        .timeout(
+          const Duration(seconds: 8),
+          onTimeout: () {
+            if (kDebugMode) {
+              print('SubscriptionManager: RevenueCat init timeout');
+            }
+            return false;
+          },
+        );
+    
+    if (initialized) {
+      bool isPremium = await RevenueCatService.instance.isPremiumUser();
+      
+      // ✅ Update subscription status (userId can be null here)
+      await updateSubscriptionVariables(
+        userId: userId, // Can be null - method now handles it
+        eventType: 'REVENUECAT_CHECK',
+        status: isPremium ? 'active' : 'inactive',
+      );
+      
+      return {
+        'subscribed': _subscriptionStatus,
+        'userId': _subscriptionUserId,
+        'eventType': _subscriptionEventType,
+        'message': _subscriptionStatus 
+            ? 'Premium active (RevenueCat)' 
+            : 'No premium subscription (RevenueCat)',
+        'source': source,
+      };
+    }
+    
+    // ✅ Handle initialization failure
+    source = 'error';
+    return {
+      'subscribed': false,
+      'userId': _subscriptionUserId,
+      'eventType': _subscriptionEventType,
+      'message': 'Failed to initialize RevenueCat to check subscription.',
+      'source': source,
+    };
+    
+  } catch (e) {
+    if (kDebugMode) {
+      print('Error checking subscription: $e');
+    }
+    return {
+      'subscribed': false,
+      'userId': _subscriptionUserId,
+      'eventType': _subscriptionEventType,
+      'message': 'Error checking subscription: $e',
+      'source': 'error',
+    };
   }
+}
+
+// ✅ Also update this method to accept nullable userId
+Future<void> updateSubscriptionVariables({
+  String? userId, // Made nullable
+  required String eventType,
+  required String status,
+}) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // ✅ Only update userId if provided and not empty
+    if (userId != null && userId.isNotEmpty) {
+      _subscriptionUserId = userId;
+      await prefs.setString(_subscriptionUserIdKey, _subscriptionUserId);
+    }
+    
+    _subscriptionEventType = eventType;
+    _subscriptionStatus = status.toLowerCase() == 'active';
+    _subscriptionTimestamp = DateTime.now().millisecondsSinceEpoch;
+    
+    await prefs.setString(_subscriptionEventTypeKey, _subscriptionEventType);
+    await prefs.setBool(_subscriptionStatusKey, _subscriptionStatus);
+    await prefs.setInt(_subscriptionTimestampKey, _subscriptionTimestamp);
+    
+    await globals.loadSubscriptionData();
+    
+    if (kDebugMode) {
+      print('SubscriptionManager: Variables updated successfully');
+      print('  User ID: $_subscriptionUserId');
+      print('  Event Type: $_subscriptionEventType');
+      print('  Status: ${_subscriptionStatus ? "active" : "inactive"}');
+      print('  Timestamp: $_subscriptionTimestamp');
+    }
+    
+  } catch (e) {
+    if (kDebugMode) {
+      print('Error updating subscription variables: $e');
+    }
+  }
+}
 
   void _showSubscriptionNotification(String userId, String status) {
     String message = status == 'active' 

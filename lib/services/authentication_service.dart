@@ -193,9 +193,12 @@ class AuthenticationService {
 
       // فحص حالة الاشتراك
       final subscriptionManager = SubscriptionManager();
-      final subscriptionResponse = await subscriptionManager.checkSubscription();
-
-      if (subscriptionResponse['subscribed'] == true) {
+     // final subscriptionResponse = await subscriptionManager.checkSubscription();
+       
+   
+    final  isPremium = await RevenueCatService.instance.isPremiumUser();
+  
+      if (isPremium == true) {
         _debugLog('User is subscribed → going to reminders');
         NavigationService.navigateTo(context, '/reminders');
       } else {

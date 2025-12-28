@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
+import 'package:flex_reminder/services/revenuecat_service.dart';
 import 'package:flex_reminder/utils/language_manager.dart';
 import 'package:flex_reminder/l10n/app_localizations.dart';
 import 'package:flex_reminder/providers/auth_provider.dart';
@@ -101,7 +102,7 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen>
             if (kDebugMode) {
               print('ℹ️ No premium subscription, showing paywall');
             }
-            await subscriptionManager.showPaywall();
+             await RevenueCatService.instance.showPaywall();
             NavigationService.navigateTo(context, '/subscription_management');
           }
         } else {

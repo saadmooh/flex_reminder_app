@@ -14,6 +14,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../utils/consts.dart';
 import 'package:flex_reminder/services/reminders_service.dart';
 import 'package:flex_reminder/services/subscription_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FcmService {
   // Singleton instance
@@ -341,7 +342,23 @@ void _showSubscriptionUpdateNotification(String userId, String eventType, String
   
   _showFcmNotificationSnackBar(title, body);
 }
-
+ /// مسح FCM token من التخزين المحلي
+  Future<void> clearFcmToken() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('fcm_token');
+      await prefs.remove('fcm_token_sent_to_backend');
+      await prefs.remove('fcm_user_id');
+      
+      if (kDebugMode) {
+        print('FcmService: FCM token cleared from storage');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('FcmService: Error clearing FCM token: $e');
+      }
+    }
+  }
 // دالة جديدة لعرض إشعار مفصل
 void _showDetailedSubscriptionNotification(String userId, String eventType, String status) {
   String title = "User: $userId";

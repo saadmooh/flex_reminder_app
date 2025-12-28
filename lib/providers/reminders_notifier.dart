@@ -130,7 +130,8 @@ class RemindersNotifier extends ChangeNotifier {
           forceRefresh) {
         await fetchReminders(forceFetch: true);
       }
-
+      await RemindersService.instance.rescheduleAllNotifications(unreadReminders);
+  
       _isInitialized = true;
       _lastInitialization = DateTime.now();
       await _service.saveLastInitialization(_lastInitialization!);

@@ -204,52 +204,44 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
-  Future<void> _handleOnlineAuthentication(AuthProvider authProvider) async {
-    try {
-      _safeShowMessage('🌐 Handling online authentication...');
-      _updateStatus('التحقق من حالة تسجيل الدخول...');
-      await authProvider.initializeAuthentication();
+ Future<void> _handleOnlineAuthentication(AuthProvider authProvider) async {
+  try {
+    _updateStatus('التحقق من حالة تسجيل الدخول...');
+    await authProvider.initializeAuthentication();
 
-      if (authProvider.isLoading) {
-        _safeShowMessage('⚠️ AuthProvider still loading after initialization',
-            color: Colors.orange);
-        _updateStatus('إعادة محاولة فحص البيانات...');
-        await authProvider.initializeAuthentication();
-      }
+    // ✅ التحقق من المصادقة أولاً، ثم من الاشتراك
+    final token = await authProvider.getToken();
+    final hasToken = token != null && token.isNotEmpty;
 
-      _safeShowMessage(
-          '📊 AuthProvider state: isAuthenticated=${authProvider.isAuthenticated}, isOfflineMode=${authProvider.isOfflineMode}, userId=${authProvider.userId}');
-
-      final token = await authProvider.getToken();
-      final hasToken = token != null && token.isNotEmpty;
-
-      if (authProvider.isAuthenticated || hasToken) {
-        _safeShowMessage('✅ User authenticated or has stored token');
-        _updateStatus(authProvider.isOfflineMode
-            ? 'تم التحقق من البيانات المحفوظة'
-            : 'تم التحقق من حالة المستخدم بنجاح');
-        //await Future.delayed(const Duration(milliseconds: 800));
-        await _handleAuthenticatedUser(authProvider,
-            isOffline: authProvider.isOfflineMode);
-      } else {
-        _safeShowMessage('❌ User not authenticated and no stored token',
-            color: Colors.red);
-        if (authProvider.errorMessage != null) {
-          _safeShowMessage('Auth Error: ${authProvider.errorMessage}',
-              color: Colors.red);
-        }
-        _updateStatus('لم يتم العثور على بيانات تسجيل دخول صحيحة...');
-        //await Future.delayed(const Duration(milliseconds: 1500));
-        _updateStatus('إعادة توجيه لتسجيل الدخول...');
-        //await Future.delayed(const Duration(milliseconds: 800));
-        _navigateToRoute('/auth');
-      }
-    } catch (e) {
-      _safeShowMessage('❌ Error in online authentication: $e',
-          color: Colors.red);
-      _handleInitializationError(e);
+    // ✅ إذا كان مصدقاً أو لديه token، انتقل مباشرة
+    if (authProvider.isAuthenticated || hasToken) {
+      _updateStatus('تم التحقق من بيانات تسجيل الدخول...');
+      
+      // فحص الاشتراك في الخلفية (لا يمنع الانتقال)
+      _checkSubscriptionInBackground(authProvider);
+      
+      // الانتقال فوراً
+      _navigateToRoute('/reminders');
+    } else {
+      // تسجيل الدخول مطلوب
+      _navigateToRoute('/auth');
     }
+  } catch (e) {
+    _handleInitializationError(e);
   }
+}
+
+// دالة جديدة لفحص الاشتراك في الخلفية
+Future<void> _checkSubscriptionInBackground(AuthProvider authProvider) async {
+  try {
+    final hasInternet = await ConnectivityHelper.checkInternetConnection(verbose: false);
+    if (hasInternet && authProvider.userId != null) {
+      await authProvider.refreshSubscriptionStatus();
+    }
+  } catch (e) {
+    // تجاهل الأخطاء في الخلفية
+  }
+}
 
   Future<void> _handleOfflineAuthentication(AuthProvider authProvider) async {
     try {

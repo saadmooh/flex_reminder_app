@@ -35,6 +35,8 @@ class AuthProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
   int? _userId;
+  bool _hasActiveSubscription = false;
+bool get hasActiveSubscription => _hasActiveSubscription;
   String? _firebaseUid;
   bool _isOfflineMode = false;
   bool _isInitializing = false;
@@ -64,19 +66,27 @@ class AuthProvider with ChangeNotifier {
   bool get isGoogleAuthorized => _isGoogleAuthorized;
 
   @override
-  void notifyListeners() {
-    // التحقق مما إذا كانت قيمة _isAuthenticated قد تغيرت إلى true
-    if (_isAuthenticated ) {
-      // إرسال FCM token إلى الخادم
-      _sendFcmTokenToBackend();
-    }
-    
-    // تحديث الحالة السابقة
-    _previousIsAuthenticated = _isAuthenticated;
-    
-    // استدعاء notifyListeners() الأصلي
-    super.notifyListeners();
+ @override
+void notifyListeners() {
+  // التحقق مما إذا كانت قيمة _isAuthenticated قد تغيرت إلى true
+  if (_isAuthenticated && _previousIsAuthenticated != _isAuthenticated) {
+    // إرسال FCM token إلى الخادم
+    _sendFcmTokenToBackend();
   }
+  
+  // ✅ تحقق إضافي: لا ترسل FCM token إذا كان المستخدم غير مصدق
+  if (!_isAuthenticated) {
+    _safeShowMessage('⚠️ User not authenticated, skipping FCM token send');
+    super.notifyListeners();
+    return;
+  }
+  
+  // تحديث الحالة السابقة
+  _previousIsAuthenticated = _isAuthenticated;
+  
+  // استدعاء notifyListeners() الأصلي
+  super.notifyListeners();
+}
   
   // دالة مساعدة لإرسال FCM token
   Future<void> _sendFcmTokenToBackend() async {
@@ -162,114 +172,107 @@ class AuthProvider with ChangeNotifier {
     });
   }
 
-  Future<void> initializeAuthentication() async {
-    if (_isInitializing) {
-      _safeShowMessage('⏳ Authentication already initializing, waiting...');
-      while (_isInitializing) {
-        await Future.delayed(const Duration(milliseconds: 100));
-      }
-      return;
+ Future<void> initializeAuthentication() async {
+  if (_isInitializing) {
+    _safeShowMessage('⏳ Authentication already initializing, waiting...');
+    while (_isInitializing) {
+      await Future.delayed(const Duration(milliseconds: 100));
     }
+    return;
+  }
 
-    _isInitializing = true;
-    _isInitialized = false;
-    notifyListeners();
+  _isInitializing = true;
+  _isInitialized = false;
+  notifyListeners();
 
-    try {
-      _safeShowMessage('🔄 Starting authentication initialization...');
-      final token = await getToken();
-      _safeShowMessage('🔍 Token found: ${token != null && token.isNotEmpty}');
+  try {
+    _safeShowMessage('🔄 Starting authentication initialization...');
+    final token = await getToken();
+    _safeShowMessage('🔍 Token found: ${token != null && token.isNotEmpty}');
 
-      if (token != null && token.isNotEmpty) {
-        _safeShowMessage('📡 Checking token validity...');
-        final hasInternet =
-            await ConnectivityHelper.checkInternetConnection(verbose: true);
-        if (hasInternet) {
-          try {
-            final isValid = await _apiService.checkTokenValidity();
-            _isOfflineMode = false;
-            if (isValid) {
-              _safeShowMessage('✅ Token is valid online');
-              _userId = await getUserId();
-              _firebaseUid = await getFirebaseUid();
-              _isActivated = await getActivationStatus();
-              if (_userId != null && _isActivated) {
-                _safeShowMessage(
-                    '💎 User initialized, Activated: $_isActivated');
-                
-                // Check subscription status to determine authentication
-                await _checkSubscriptionAndSetAuthStatus();
-                
-              } else {
-                _safeShowMessage(
-                    '❌ Account not activated or incomplete data, clearing all data...');
-                await clearAllUserData();
-              }
-            } else {
-              _safeShowMessage('❌ Token invalid, logging out...');
-              await logout();
-            }
-          } catch (e) {
-            _safeShowMessage(
-                '🌐 Network error, falling back to offline mode: $e');
-            await _handleOfflineAuthentication(token);
+    
+  
+  if (token != null && token.isNotEmpty) {
+    final hasInternet = await ConnectivityHelper.checkInternetConnection(verbose: true);
+    
+    if (hasInternet) {
+      try {
+        final isValid = await _apiService.checkTokenValidity();
+        if (isValid) {
+          _userId = await getUserId();
+          _firebaseUid = await getFirebaseUid();
+          _isActivated = await getActivationStatus();
+          
+          if (_userId != null && _isActivated) {
+            // ✅ المستخدم مصدق إذا كان الـ token صالحاً ومفعلاً
+            _isAuthenticated = true;
+            
+            // فحص الاشتراك كنشاط ثانوي (لا يؤثر على المصادقة)
+            await _checkSubscriptionAndSetAuthStatus();
+          } else {
+            await clearAllUserData();
+            _isAuthenticated = false;
           }
         } else {
-          _safeShowMessage('📴 No internet, proceeding in offline mode');
-          await _handleOfflineAuthentication(token);
+          await logout();
         }
-      } else {
-        _safeShowMessage('❌ No token found');
-        _isAuthenticated = false;
-        _isOfflineMode = false;
-        _isActivated = false;
+      } catch (e) {
+        _safeShowMessage('🌐 Network error, using offline mode: $e');
+        // ✅ إذا فشل الاتصال، لا تزال مصدقاً إذا كان لديك token
+        await _handleOfflineAuthentication(token);
       }
-    } catch (e) {
-      _safeShowMessage('❌ Critical error in initializeAuthentication: $e');
-      _isAuthenticated = false;
-      _isOfflineMode = false;
-      _isActivated = false;
-    } finally {
-      _isInitializing = false;
-      _isInitialized = true;
-      notifyListeners();
-      _safeShowMessage('✅ Authentication initialization completed');
+    } else {
+      // لا إنترنت - استخدم البيانات المحفوظة
+      await _handleOfflineAuthentication(token);
     }
+  } else {
+    _isAuthenticated = false; // لا يوجد token
   }
-
+  } catch (e) {
+    _safeShowMessage('❌ Critical error in initializeAuthentication: $e');
+    _isAuthenticated = false;
+    _isOfflineMode = false;
+    _isActivated = false;
+  } finally {
+    _isInitializing = false;
+    _isInitialized = true;
+    notifyListeners();
+    _safeShowMessage('✅ Authentication initialization completed');
+  }
+}
   // New method to check subscription and set authentication status
-  Future<void> _checkSubscriptionAndSetAuthStatus() async {
-    try {
-      final userIdStr = _userId?.toString();
-      if (userIdStr != null) {
-        _subscriptionManager = SubscriptionManager();
-        final subscriptionResponse = await _subscriptionManager!.checkSubscription(userId: userIdStr);
-        
-        // Get current subscription status
-        final currentSubscriptionStatus = subscriptionResponse['subscribed'] == true;
-        
-        // Set authentication status based exclusively on subscription check
-        _isAuthenticated = currentSubscriptionStatus;
-        
-        // Show notification if subscription is active and it wasn't active before
-        if (currentSubscriptionStatus && !_previousSubscriptionStatus) {
-          _showSubscriptionActiveNotification();
-        }
-        
-        // Update previous subscription status
-        _previousSubscriptionStatus = currentSubscriptionStatus;
-        
-        _safeShowMessage('🔍 Subscription check result: ${subscriptionResponse['subscribed']}');
-        _safeShowMessage('🔐 Authentication status set to: $_isAuthenticated');
-      } else {
-        _safeShowMessage('❌ User ID is null, cannot check subscription');
-        _isAuthenticated = false;
+ Future<void> _checkSubscriptionAndSetAuthStatus() async {
+  try {
+    final userIdStr = _userId?.toString();
+    if (userIdStr != null) {
+      _subscriptionManager = SubscriptionManager();
+      final subscriptionResponse = await _subscriptionManager!.checkSubscription(userId: userIdStr);
+      
+      final currentSubscriptionStatus = subscriptionResponse['subscribed'] == true;
+      
+      // ✅ لا تربط المصادقة بالاشتراك مباشرة
+      // _isAuthenticated = currentSubscriptionStatus; // أزل هذا السطر
+      
+      // ✅ بدلاً من ذلك، احفظ حالة الاشتراك في متغير منفصل
+      _hasActiveSubscription = currentSubscriptionStatus;
+      
+      if (currentSubscriptionStatus && !_previousSubscriptionStatus) {
+        _showSubscriptionActiveNotification();
       }
-    } catch (e) {
-      _safeShowMessage('❌ Error checking subscription: $e');
-      _isAuthenticated = false;
+      
+      _previousSubscriptionStatus = currentSubscriptionStatus;
+      _safeShowMessage('🔍 Subscription status: $currentSubscriptionStatus');
+    } else {
+      _safeShowMessage('❌ User ID is null, cannot check subscription');
+      _hasActiveSubscription = false;
     }
+  } catch (e) {
+    _safeShowMessage('⚠️ Error checking subscription (non-critical): $e');
+    // ✅ في حال فشل فحص الاشتراك، لا تغير حالة المصادقة
+    // وضع قيمة افتراضية
+    _hasActiveSubscription = false;
   }
+}
 
  // Method to show notification when subscription is active
 void _showSubscriptionActiveNotification() {

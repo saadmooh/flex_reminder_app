@@ -1021,56 +1021,81 @@ class _RemindersScreenState extends State<RemindersScreen>
     });
   }
 
-  Future<void> _showSavePostModal(String? sharedUrl) async {
-    if (!_isOnline && sharedUrl != null) {
-      final isArabic = Provider.of<LanguageManager>(context, listen: false)
-              .locale
-              .languageCode ==
-          'ar';
 
-      _showSnackBar(
-        isArabic
-            ? 'يتطلب إضافة منشور جديد اتصال بالإنترنت'
-            : 'Adding new posts requires internet connection',
-        Colors.red,
-      );
-      return;
-    }
 
-    print('عرض نافذة حفظ منشور مع رابط: $sharedUrl');
-    final result = await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding:
-            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: SavePostScreen(
-          initialUrl: sharedUrl,
-          onSave: () {
-            print('saved post, triggering reminders refresh');
-            if (_isOnline) {
-              Provider.of<RemindersNotifier>(context, listen: false)
-                  .forceRefreshReminders();
-              // مسح الـ cache بعد إضافة تذكير جديد
-              SearchLogic.clearCache();
-            }
-          },
-        ),
-      ),
+Future<void> _showSavePostModal(String? sharedUrl) async {
+  // ✅ إضافة هذا السطر لتعريف isArabic
+  final isArabic = Provider.of<LanguageManager>(context, listen: false)
+          .locale
+          .languageCode == 'ar';
+
+  if (!_isOnline && sharedUrl != null) {
+    _showSnackBar(
+      isArabic
+          ? 'يتطلب إضافة منشور جديد اتصال بالإنترنت'
+          : 'Adding new posts requires internet connection',
+      Colors.red,
     );
-
-    if (result == true && _isOnline) {
-      await Provider.of<RemindersNotifier>(context, listen: false)
-          .forceRefreshReminders();
-      // مسح الـ cache بعد إضافة تذكير جديد
-      SearchLogic.clearCache();
-    }
+    return;
   }
+
+  print('عرض نافذة حفظ منشور مع رابط: $sharedUrl');
+  
+  final result = await showModalBottomSheet<Map<String, dynamic>>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SavePostScreen(
+        initialUrl: sharedUrl,
+        onSave: () {
+          print('saved post');
+        },
+      ),
+    ),
+  );
+
+  if (result != null && result['success'] == true && result['post'] != null) {
+    print('✅ تم استقبال تذكير جديد، جاري الإضافة...');
+    try {
+      final remindersNotifier = Provider.of<RemindersNotifier>(context, listen: false);
+      
+      // إضافة التذكير الجديد مباشرةً دون مسح القديم
+      await remindersNotifier.addNewReminderFromServerData(result['post']);
+      
+      // مسح cache البحث
+      SearchLogic.clearCache();
+      
+      // عرض رسالة نجاح
+      _safeShowMessage(
+        isArabic ? 'تم حفظ التذكير بنجاح' : 'Reminder saved successfully',
+        color: Colors.green,
+      );
+    } catch (e) {
+      print('❌ خطأ في إضافة التذكير: $e');
+      _safeShowMessage(
+        isArabic ? 'تم الحفظ لكن لم يتم تحديث العرض' : 'Saved but display not updated',
+        color: Colors.orange,
+      );
+    }
+  } else if (result != null && result['success'] == false) {
+    print('❌ فشل حفظ التذكير: ${result['error']}');
+    _safeShowMessage(
+      isArabic ? 'فشل حفظ التذكير' : 'Failed to save reminder',
+      color: Colors.red,
+    );
+  }
+  
+  if (mounted) {
+    setState(() {});
+  }
+}
+
 
   // تحسين تحميل المزيد من التذكيرات مع منع التكرار
   Future<void> _loadMoreReminders(bool showOpened) async {

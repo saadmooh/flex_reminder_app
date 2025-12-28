@@ -32,6 +32,7 @@ import 'package:flex_reminder/utils/connectivity_helper.dart';
 import 'package:flex_reminder/services/subscription_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flex_reminder/background/workmanager_dispatcher.dart'; // ✅ استيراد dispatcher
+import 'package:flutter/services.dart'; // ✅ إضافة استيراد MethodChannel
 
 // إنشاء instance مشترك للـ NotificationService
 late NotificationService _backgroundNotificationService;
@@ -90,8 +91,16 @@ void main() async {
   // ✅ تفعيل وضع Debug في بداية التطبيق
   isDebugMode = true; // من globals.dart
  
+  // ✅ 5. إعداد معالجة البيانات المشتركة مبكراً
+  _setupSharedDataHandling();
+  
   // استخدام دالة التهيئة الموحدة
   await _initializeAndStartApp();
+}
+
+// ✅ دالة جديدة لإعداد معالجة البيانات المشتركة
+void _setupSharedDataHandling() {
+  debugPrint('🔄 Setting up shared data handling...');
 }
 
 Future<void> _initializeAndStartApp() async {
@@ -546,10 +555,11 @@ class _NoInternetScreenState extends State<NoInternetScreen> {
 }
 
 // ============================================================================
-// التطبيق الرئيسي
+// التطبيق الرئيسي المعدل
 // ============================================================================
 
-class MyApp extends StatelessWidget {
+// ✅ تعديل مهم: تحويل MyApp إلى StatefulWidget لدعم البيانات المشتركة
+class MyApp extends StatefulWidget {
   final bool isFirebaseInitialized;
   final bool isFcmInitialized;
   final bool isRevenueCatInitialized;
@@ -564,9 +574,51 @@ class MyApp extends StatelessWidget {
   });
 
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+// ✅ دالة مساعدة للحصول على MethodChannel
+const MethodChannel _sharedDataChannel = MethodChannel('app.channel.shared.data');
+
+class _MyAppState extends State<MyApp> {
+  String? _pendingSharedUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupSharedDataListener();
+  }
+
+  // ✅ إعداد مستمع للبيانات المشتركة
+  void _setupSharedDataListener() {
+    _sharedDataChannel.setMethodCallHandler((call) async {
+      if (call.method == 'handleSharedText') {
+        final sharedText = call.arguments as String?;
+        if (sharedText != null) {
+          debugPrint('📥 Shared text received in Flutter: $sharedText');
+          
+          setState(() {
+            _pendingSharedUrl = sharedText;
+          });
+          
+          // ✅ الانتقال إلى SavePostScreen مع الرابط
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted && navigatorKey.currentState != null) {
+              navigatorKey.currentState!.pushNamed(
+                '/save-post',
+                arguments: sharedText,
+              );
+            }
+          });
+        }
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     debugPrint(
-        'MyApp build called - Firebase: $isFirebaseInitialized, FCM: $isFcmInitialized, RevenueCat: $isRevenueCatInitialized');
+        'MyApp build called - Firebase: ${widget.isFirebaseInitialized}, FCM: ${widget.isFcmInitialized}, RevenueCat: ${widget.isRevenueCatInitialized}');
     return Consumer2<LanguageManager, AuthProvider>(
       builder: (context, languageManager, authProvider, child) {
         RemindersNotifier.instance.setAuthProvider(authProvider);
@@ -672,8 +724,11 @@ class MyApp extends StatelessWidget {
                 return MaterialPageRoute(
                     builder: (_) => const TimeSlotsScreen());
               case '/save-post':
+                // ✅ تعديل مهم: تمرير initialUrl كـ arguments
+                final initialUrl = settings.arguments as String?;
                 return MaterialPageRoute(
-                    builder: (_) => const SavePostScreen());
+                  builder: (_) => SavePostScreen(initialUrl: initialUrl),
+                );
               case '/stats':
                 return MaterialPageRoute(builder: (_) => const StatsScreen());
               case '/reset-password':

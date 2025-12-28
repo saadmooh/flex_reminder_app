@@ -173,91 +173,102 @@ class _SavePostScreenState extends State<SavePostScreen> {
     }
   }
 
-  Future<void> _savePost() async {
-    if (!_formKey.currentState!.validate()) return;
+ Future<void> _savePost() async {
+  if (!_formKey.currentState!.validate()) return;
 
-    if (!_hasInternetConnection) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_localizations.noInternetConnection)),
-      );
-      return;
-    }
+  if (!_hasInternetConnection) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_localizations.noInternetConnection)),
+    );
+    return;
+  }
 
-    setState(() => _isLoading = true);
+  setState(() => _isLoading = true);
 
-    try {
-      final url = _urlController.text.trim();
-      final importance = _selectedImportance;
+  try {
+    final url = _urlController.text.trim();
+    final importance = _selectedImportance;
 
-      final data = {
-        'url': url,
-        'importance_en': _importanceOptions[importance]!['en'],
-        'importance_ar': _importanceOptions[importance]!['ar'],
-      };
+    final data = {
+      'url': url,
+      'importance_en': _importanceOptions[importance]!['en'],
+      'importance_ar': _importanceOptions[importance]!['ar'],
+    };
 
-      final result = await _apiService.savePost(data);
+    final result = await _apiService.savePost(data);
 
-      if (result['success'] == true) {
-        final title = result['title']?.toString() ?? 'Untitled Post';
-        final id = result['id'];
-        final nextReminderTime = result['nextReminderTime']?.toString();
+    if (result['success'] == true) {
+      final title = result['title']?.toString() ?? 'Untitled Post';
+      final id = result['id'];
+      final nextReminderTime = result['nextReminderTime']?.toString();
 
-        if (id == null || nextReminderTime == null) {
-          throw Exception(_localizations.missingDataFromServer);
-        }
-
-        await _schedulePostNotification(title, id, nextReminderTime);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم حفظ المنشور'),
-            backgroundColor: Colors.lightGreen,
-          ),
-        );
-
-        widget.onSave?.call();
-        Navigator.pop(context, true);
-      } else {
-        final msg = result['message'];
-        final errorMsg = (msg is String && msg.isNotEmpty)
-            ? msg
-            : _localizations.unknownError;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
-        );
-      }
-    } catch (error, stackTrace) {
-      print('Save error: $error\n$stackTrace');
-      String userMessage;
-
-      if (error is SocketException || error is TimeoutException) {
-        userMessage = _localizations.noInternetConnection;
-      } else if (error is HttpException) {
-        userMessage = _localizations.serverError;
-      } else if (error is FormatException) {
-        userMessage = _localizations.invalidResponseFromServer;
-      } else {
-        userMessage = error.toString().contains('HttpException')
-            ? _localizations.serverError
-            : _localizations.postSaveFailedGeneral;
+      if (id == null || nextReminderTime == null) {
+        throw Exception(_localizations.missingDataFromServer);
       }
 
+      await _schedulePostNotification(title, id, nextReminderTime);
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(userMessage),
-          backgroundColor: Colors.red,
-          action: SnackBarAction(
-            label: _localizations.retry,
-            onPressed: _savePost,
-            textColor: Colors.white,
-          ),
+        const SnackBar(
+          content: Text('تم حفظ المنشور'),
+          backgroundColor: Colors.lightGreen,
         ),
       );
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+
+      widget.onSave?.call();
+      
+      // ✅ تعديل مهم: إرجاع بيانات التذكير الجديدة بدلاً من true
+      Navigator.pop(context, {
+        'success': true,
+        'post': result['post'], // إرجاع بيانات المنشور الكاملة
+      });
+    } else {
+      final msg = result['message'];
+      final errorMsg = (msg is String && msg.isNotEmpty)
+          ? msg
+          : _localizations.unknownError;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+      );
     }
+  } catch (error, stackTrace) {
+    print('Save error: $error\n$stackTrace');
+    String userMessage;
+
+    if (error is SocketException || error is TimeoutException) {
+      userMessage = _localizations.noInternetConnection;
+    } else if (error is HttpException) {
+      userMessage = _localizations.serverError;
+    } else if (error is FormatException) {
+      userMessage = _localizations.invalidResponseFromServer;
+    } else {
+      userMessage = error.toString().contains('HttpException')
+          ? _localizations.serverError
+          : _localizations.postSaveFailedGeneral;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(userMessage),
+        backgroundColor: Colors.red,
+        action: SnackBarAction(
+          label: _localizations.retry,
+          onPressed: _savePost,
+          textColor: Colors.white,
+        ),
+      ),
+    );
+    
+    // ✅ تعديل مهم: إرجاع error في حالة الفشل
+    Navigator.pop(context, {
+      'success': false,
+      'error': userMessage,
+    });
+  } finally {
+    if (mounted) setState(() => _isLoading = false);
   }
+}
 
   @override
   Widget build(BuildContext context) {
